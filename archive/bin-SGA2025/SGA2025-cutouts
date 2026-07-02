@@ -1,8 +1,23 @@
 #!/usr/bin/env python
 
-"""MPI wrapper to get a large number of image cutouts.
+"""MPI/multiprocessing command-line wrapper around ``SGA.cutouts`` to
+fetch, annotate, montage, and (for ssl-legacysurvey) package image
+cutouts for large SGA-2025 samples.
 
-Working interactively in a login node, one would do something like:
+Reads a sample (the region-level SGA sample via
+``SGA.SGA.read_sample``, the SGA-2020 legacy catalog via
+``SGA.external.read_sga2020``, or -- for ``--build-ssl`` -- both dr11
+regions' final samples combined) on rank 0 and broadcasts it, then
+dispatches to one of several modes based on which flags are set (most
+are mutually exclusive in practice, checked in this order):
+``--annotated-montage`` (:func:`SGA.cutouts.annotated_montage`),
+``--build-ssl`` (``SGA.ssl.build_ssl_legacysurvey_refcat``/
+``SGA.ssl.build_ssl_legacysurvey``), ``--plan`` (dry-run planning via
+:func:`SGA.cutouts.cutouts_plan`, no actual work), ``--annotate``
+(:func:`SGA.cutouts.do_annotate`), or the default, plain cutout
+fetching (:func:`SGA.cutouts.do_cutouts`).
+
+Working interactively on a login node::
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
   SGA2025-shifter
@@ -11,40 +26,37 @@ Working interactively in a login node, one would do something like:
   SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1
   SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1 --annotate
 
-Alternatively, in production, one would do:
+In production, under Shifter/MPI::
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
 
-  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 > \
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \\
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 > \\
     $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr11-south-native-JOBID.log 2>&1 &
 
-  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 --rescale > \
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \\
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 --rescale > \\
     $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr11-south-rescale-JOBID.log 2>&1 &
 
-###
-To build the ssl-legacysurvey catalog:
+To build the ssl-legacysurvey catalog, first generate rescaled cutouts
+for both regions, then pack them into HDF5 files::
 
-  First generate the rescaled cutouts for both regions:
-    salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-    shifter --image dstndstn/cutouts:dvsro4 bash
-    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+  shifter --image dstndstn/cutouts:dvsro4 bash
+  source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-north --rescale --mp=128
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-south --rescale --mp=128
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-north --rescale --mp=128
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-south --rescale --mp=128
 
-  Then pack the rescaled cutouts into HDF5 files:
-    SGA2025-shifter
-    source $HOME/code/git/SGA/bin/SGA2025/SGA2025-env
+  SGA2025-shifter
+  source $HOME/code/git/SGA/bin/SGA2025/SGA2025-env
 
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v4
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v3
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v4
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v3
 
-###
-SGA-2020 sample (legacy):
+SGA-2020 sample (legacy)::
 
-SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2020-cutouts --sga2020 --bands='g,r,z' --rescale --mp=128
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2020-cutouts --sga2020 --bands='g,r,z' --rescale --mp=128
 
 """
 import os
@@ -58,7 +70,29 @@ from SGA.logger import log
 
 
 def main():
-    """Main wrapper."""
+    """Command-line entry point: parse arguments, load the requested
+    sample on rank 0, and dispatch to the requested cutout/annotate/
+    montage/ssl-build mode.
+
+    Notes
+    -----
+    ``--build-ssl`` requires ``--ssl-version``; the script raises
+    ``ValueError`` if it's missing (rather than an argparse-level
+    error). ``--annotated-montage`` is invoked with
+    ``wisesize=False, lvd=False, zooniverse=False`` hardcoded (there is
+    no CLI flag to set them), which avoids the
+    ``UnboundLocalError`` bug documented in
+    :func:`SGA.cutouts.annotated_montage`'s Notes -- those three modes
+    cannot currently be reached through this script. A commented-out
+    override (``layer = 'ls-dr11-early-v2'`` for ``region ==
+    'dr11-south'``) shows a since-abandoned layer substitution; it is
+    inert.
+
+    Returns
+    -------
+    None
+
+    """
     import argparse
     from SGA.cutouts import get_pixscale_and_width, cutouts_plan
 

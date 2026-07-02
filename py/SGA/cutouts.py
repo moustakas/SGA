@@ -23,8 +23,42 @@ from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
 
 def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.,
                            default_width=152, default_pixscale=0.262):
-    """Simple function to compute the pixel scale of the desired
-    output images.
+    """Compute the per-object pixel scale and cutout width (in pixels)
+    for a set of objects, given their diameters.
+
+    Two modes: if ``rescale``, every cutout uses a fixed
+    ``default_width`` and a pixel scale scaled up proportionally to
+    each object's diameter (so larger objects still "fit" the same
+    pixel width, at coarser resolution); otherwise, every cutout uses
+    the native ``default_pixscale`` and a width proportional to
+    diameter (1.5x), except objects larger than ``maxdiam_arcmin``,
+    which are coarsened (pixel scale scaled up) to cap their width.
+
+    Parameters
+    ----------
+    diam : :class:`numpy.ndarray`
+        Object diameters, arcsec.
+    mindiam : :class:`float`, optional
+        Minimum diameter, arcsec, used only to set the default
+        ``rescale`` normalization if not otherwise specified; defaults
+        to ``default_width * default_pixscale``.
+    rescale : :class:`bool`
+        If True, use fixed-width/variable-pixel-scale mode; if False
+        (default), use native-pixel-scale/variable-width mode.
+    maxdiam_arcmin : :class:`float`
+        Diameter threshold (arcmin) above which the native-pixel-scale
+        mode coarsens the pixel scale to cap the cutout width.
+    default_width : :class:`int`
+        Cutout width, pixels, used directly in ``rescale`` mode.
+    default_pixscale : :class:`float`
+        Native pixel scale, arcsec/pixel.
+
+    Returns
+    -------
+    pixscale : :class:`numpy.ndarray`
+        Per-object pixel scale, arcsec/pixel.
+    width : :class:`numpy.ndarray`
+        Per-object cutout width, pixels (integer).
 
     """
     if mindiam is None:
@@ -58,7 +92,77 @@ def cutouts_plan(cat, width=152, layer='ls-dr11', cutoutdir='.', annotatedir='.'
                  gather_photo=False, annotate=False, fits_cutouts=True,
                  unwise_cutouts=False, galex_cutouts=False, overwrite=False,
                  verbose=False, use_catalog_objname=False):
-    """Build a plan for generating (annotated) cutouts and basic photometry.
+    """Determine per-object output filenames, which objects still need
+    work, and how to divide that work across ``size`` MPI ranks, for
+    one of three modes: cutouts, annotation, or photometry.
+
+    Computes each object's name (``SGAGROUP`` if ``group``, else
+    ``OBJNAME`` if ``use_catalog_objname``, else a freshly-derived
+    :func:`SGA.SGA.sga2025_name`), then dispatches (via multiprocessing
+    if ``mp > 1``) to :func:`get_photo_filename` (if ``photo`` or
+    ``gather_photo``), :func:`get_annotate_filename` (if ``annotate``),
+    or :func:`get_basefiles_one` (otherwise) to resolve each object's
+    output path(s) and whether it still needs processing (``nobj``: 1 =
+    needs work, 0 = already done/skippable). Logs a summary of how many
+    objects need work, then splits their indices into ``size`` unweighted
+    chunks for MPI distribution.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Objects to plan for; needs ``RA``, ``DEC``, and (if ``group``)
+        ``SGAGROUP``.
+    width : :class:`int` or array-like
+        Cutout width(s), pixels; broadcast to every object if scalar.
+        Only used in the cutout-planning branch.
+    layer : :class:`str`
+        Unused in this function's body -- accepted for API symmetry
+        with :func:`do_cutouts`/:func:`do_annotate`, which call this
+        function.
+    cutoutdir : :class:`str`
+        Directory for cutout (and, in cutout mode, JPEG/FITS) output.
+    annotatedir : :class:`str`
+        Directory for annotated PNG output (annotate mode only).
+    photodir : :class:`str`
+        Directory for photometry FITS/PNG output (photo mode only).
+    size : :class:`int`
+        Number of MPI ranks to distribute work across.
+    mp : :class:`int`
+        Number of multiprocessing workers for the per-object filename
+        resolution.
+    group : :class:`bool`
+        If True, name objects by ``SGAGROUP`` (group cutouts) instead
+        of per-object name.
+    photo : :class:`bool`
+        If True, plan for photometry-file generation.
+    gather_photo : :class:`bool`
+        If True, plan for gathering (checking existence of) already-
+        generated photometry files, rather than generating new ones.
+    annotate : :class:`bool`
+        If True, plan for annotation (overrides ``photo``/``gather_photo``
+        if somehow both are set, since ``photo``/``gather_photo`` is
+        checked first).
+    fits_cutouts, unwise_cutouts, galex_cutouts : :class:`bool`
+        Which cutout products to check for existence, in cutout-planning
+        mode.
+    overwrite : :class:`bool`
+        If True, treat every object as needing work regardless of
+        existing output files.
+    verbose : :class:`bool`
+        If True, log each skipped (already-done) object.
+    use_catalog_objname : :class:`bool`
+        If True (and not ``group``), use ``cat['OBJNAME']`` directly
+        instead of deriving a name from coordinates.
+
+    Returns
+    -------
+    tuple
+        If ``photo`` or ``gather_photo``: ``(fitsfiles, jpgfiles,
+        photfiles, qafiles, groups)``. If ``annotate``: ``(jpgfiles,
+        pngfiles, groups)``. Otherwise: ``(basefiles, allra, alldec,
+        groups)``. In all cases, ``groups`` is a length-``size`` list of
+        index arrays into the per-object arrays, for MPI rank
+        distribution.
 
     """
     import multiprocessing
@@ -155,11 +259,66 @@ def cutouts_plan(cat, width=152, layer='ls-dr11', cutoutdir='.', annotatedir='.'
 
 
 def _get_photo_filename(args):
+    """Unpack an argument tuple and call :func:`get_photo_filename`;
+    multiprocessing worker for :func:`cutouts_plan`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`get_photo_filename`'s
+        signature.
+
+    Returns
+    -------
+    See :func:`get_photo_filename`.
+
+    """
     return get_photo_filename(*args)
 
 
 def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
                        overwrite=False, verbose=False):
+    """Resolve one object's cutout/photometry file paths and whether it
+    still needs photometry to be run (or gathered), for
+    :func:`cutouts_plan`.
+
+    Parameters
+    ----------
+    obj : :class:`~astropy.table.Table` row
+        Object row; needs ``RA``.
+    objname : :class:`str`
+        Object name, used to build filenames.
+    cutoutdir : :class:`str`
+        Directory containing the input FITS/JPEG cutouts.
+    photodir : :class:`str`
+        Directory for photometry FITS/PNG output.
+    gather_photo : :class:`bool`
+        If True, just check whether the photometry file already exists
+        (``nobj`` = count found by :func:`glob.glob`, 0 or 1) rather
+        than deciding whether photometry needs to be (re)run.
+    overwrite : :class:`bool`
+        If False and both the photometry FITS and PNG already exist,
+        mark the object as not needing work.
+    verbose : :class:`bool`
+        If True, log when an object is skipped as already done.
+
+    Returns
+    -------
+    fitsfile : :class:`str`
+        Path to the input FITS cutout.
+    jpgfile : :class:`str`
+        Path to the input JPEG cutout.
+    photfile : :class:`str`
+        Path to the output photometry FITS file.
+    qafile : :class:`str`
+        Path to the output photometry QA PNG file.
+    nobj : :class:`int`
+        1 if photometry still needs to run for this object, 0 if it can
+        be skipped (already done, or missing the required input FITS
+        cutout); in ``gather_photo`` mode, the number of existing
+        ``photfile`` matches instead (0 or 1).
+
+    """
     raslice = get_raslice(obj['RA'])
 
     fitsfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
@@ -186,11 +345,68 @@ def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
 
 
 def _get_annotate_filename(args):
+    """Unpack an argument tuple and call :func:`get_annotate_filename`;
+    multiprocessing worker for :func:`cutouts_plan`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`get_annotate_filename`'s
+        signature.
+
+    Returns
+    -------
+    See :func:`get_annotate_filename`.
+
+    """
     return get_annotate_filename(*args)
 
 
 def get_annotate_filename(obj, objname, cutoutdir, annotatedir,
                           overwrite=False, verbose=False):
+    """Resolve one object's input JPEG and output annotated-PNG file
+    paths, and whether it still needs annotation, for
+    :func:`cutouts_plan`.
+
+    Notes
+    -----
+    The ``objname is None`` branch calls ``custom_brickname``, which is
+    not imported anywhere in this module -- it raises ``NameError`` if
+    ever reached. In the current codebase, :func:`cutouts_plan` (the
+    only caller) always computes a non-None ``objname`` before calling
+    this function, so this branch is currently unreachable via that
+    path; it would only be triggered by some other, direct caller
+    passing ``objname=None``.
+
+    Parameters
+    ----------
+    obj : :class:`~astropy.table.Table` row
+        Object row; needs ``RA``, ``DEC``.
+    objname : :class:`str` or None
+        Object name, used to build filenames; if None, a brick name is
+        derived from ``obj``'s coordinates instead (see Notes).
+    cutoutdir : :class:`str`
+        Directory containing the input JPEG cutout.
+    annotatedir : :class:`str`
+        Directory for the output annotated PNG.
+    overwrite : :class:`bool`
+        If False and the output PNG already exists, mark the object as
+        not needing work; if True, mark it as needing work unless the
+        input JPEG is actually missing.
+    verbose : :class:`bool`
+        If True, log when an object is skipped as already done.
+
+    Returns
+    -------
+    jpgfile : :class:`str`
+        Path to the input JPEG cutout.
+    pngfile : :class:`str`
+        Path to the output annotated PNG.
+    nobj : :class:`int`
+        1 if annotation still needs to run for this object, 0 if it can
+        be skipped.
+
+    """
     raslice = get_raslice(obj['RA'])
 
     if objname is None:
@@ -216,12 +432,81 @@ def get_annotate_filename(obj, objname, cutoutdir, annotatedir,
 
 
 def _annotate_one(args):
+    """Unpack an argument tuple and call :func:`annotate_one`;
+    multiprocessing worker for :func:`do_annotate`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`annotate_one`'s signature.
+
+    Returns
+    -------
+    See :func:`annotate_one`.
+
+    """
     return annotate_one(*args)
 
 
 def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                  mosaic_diam, draw_largest_ellipse, primary, group):
-    """Annotate one image.
+    """Overlay ellipse geometry, neighbor labels, a title, and a scale
+    bar onto one object's JPEG cutout, writing the result as an
+    annotated PNG.
+
+    No-op if ``jpgfile`` doesn't exist. Builds a simple tangent-plane
+    WCS (:func:`SGA.sky.simple_wcs`) centered on ``primary`` to project
+    every ``group`` member's sky position onto the image; drops members
+    that fall outside the image bounds, and (if more than 10 members
+    remain) keeps only the 10 largest by diameter plus the primary
+    itself, to avoid an unreadably cluttered annotation. For each
+    surviving member, overlays either its single largest-reference
+    ellipse (:func:`SGA.geometry.choose_geometry`, if
+    ``draw_largest_ellipse``) or every available reference ellipse in
+    turn (SGA2020, HyperLeda, literature, via
+    :func:`SGA.geometry.parse_geometry`), color/linestyle-coded by
+    reference source. Non-primary members get a name label connected
+    to their position by a leader line, laid out in two columns
+    (left/right half of the image) with labels spread vertically to
+    reduce overlap. Adds a title block (common name, morphology,
+    coordinates), a 15 arcsec scale bar, and the primary's
+    ``ROW_PARENT`` in the corner.
+
+    Parameters
+    ----------
+    jpgfile : :class:`str`
+        Input JPEG cutout path.
+    pngfile : :class:`str`
+        Output annotated PNG path (parent directory created if needed).
+    objname : :class:`str`
+        Unused in this function's body -- accepted for API symmetry
+        with the caller's argument tuple construction, but the title
+        text uses ``commonname`` instead.
+    commonname : :class:`str`
+        Display name for the title block (typically ``OBJNAME``).
+    pixscale : :class:`float`
+        Pixel scale of ``jpgfile``, arcsec/pixel, used to build the WCS
+        and scale bar.
+    mosaic_diam : :class:`float`
+        Unused in this function's body -- accepted for API symmetry;
+        the actual mosaic width is read from the loaded image's shape.
+    draw_largest_ellipse : :class:`bool`
+        If True, draw only each member's single best-reference ellipse;
+        if False, draw every available reference ellipse for each
+        member.
+    primary : :class:`~astropy.table.Table` row
+        The central/primary object this cutout is centered on; needs
+        ``RA``, ``DEC``, ``ROW_PARENT``, ``OBJNAME``, ``OBJTYPE``,
+        ``MORPH``.
+    group : :class:`~astropy.table.Table`
+        All objects (including ``primary``) to consider annotating in
+        this cutout; needs ``RA``, ``DEC``, ``OBJNAME``, plus whatever
+        :func:`SGA.geometry.choose_geometry`/:func:`SGA.geometry.parse_geometry`
+        need.
+
+    Returns
+    -------
+    None
 
     """
     import matplotlib.pyplot as plt
@@ -426,7 +711,86 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
                 region='dr9-north', fits_cutouts=True, draw_largest_ellipse=False,
                 httpdir=None, overwrite=False, debug=False, annotate_central_only=False,
                 dry_run=False, verbose=False):
-    """Wrapper to set up the full set of annotations.
+    """Top-level driver: annotate every object's JPEG cutout with
+    ellipse geometry and neighbor labels, distributed across MPI ranks.
+
+    Rank 0 computes each object's geometry (:func:`SGA.geometry.choose_geometry`)
+    and pixel scale/width (:func:`get_pixscale_and_width`), builds the
+    annotation plan (:func:`cutouts_plan`, ``annotate=True``), optionally
+    writes an ``inventory-{region}.txt`` file mapping each object to its
+    (HTTP-rewritten) PNG path (if ``httpdir``), then broadcasts the plan
+    to all ranks. Each rank processes its assigned slice: for every
+    object, finds nearby ``fullcat`` members within twice the object's
+    diameter (:func:`astrometry.libkd.spherematch.match_radec`, coarse
+    pass using the group-wide max diameter, then a per-object refined
+    pass) to build its annotation ``group`` (or just the object itself,
+    if ``annotate_central_only``), then calls :func:`annotate_one` for
+    each (in parallel across ``mp`` workers if requested).
+
+    Notes
+    -----
+    ``dry_run`` only suppresses the final "All done" log message -- it
+    does not actually skip the annotation work itself (unlike
+    :func:`cutout_one`'s ``dry_run``, which genuinely skips the network
+    call). ``debug=True`` does skip the actual annotation calls, instead
+    printing each primary's non-primary group members and returning
+    early.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Objects to annotate; needs ``RA``, ``DEC``, ``OBJNAME``.
+    fullcat : :class:`~astropy.table.Table`
+        Full catalog to search for neighbors within each object's
+        annotation group; needs ``RA``, ``DEC``, ``OBJNAME``,
+        ``ROW_PARENT``.
+    default_width : :class:`int`
+        Default cutout width, pixels, passed to
+        :func:`get_pixscale_and_width`.
+    default_pixscale : :class:`float`
+        Default pixel scale, arcsec/pixel.
+    comm : MPI communicator, optional
+        If given, distributes work across ranks; if None, runs on a
+        single simulated rank.
+    mp : :class:`int`
+        Number of multiprocessing workers per rank for
+        :func:`annotate_one`.
+    base_cutoutdir : :class:`str`
+        Root directory used to build the ``inventory-{region}.txt``
+        path and to rewrite PNG paths to HTTP URLs.
+    cutoutdir : :class:`str`
+        Directory containing the input JPEG cutouts.
+    annotatedir : :class:`str`
+        Directory for the output annotated PNGs.
+    region : :class:`str`
+        Survey region, used in the inventory filename.
+    fits_cutouts : :class:`bool`
+        Passed through to :func:`cutouts_plan`.
+    draw_largest_ellipse : :class:`bool`
+        Passed through to :func:`annotate_one`.
+    httpdir : :class:`str`, optional
+        If given, write an inventory file mapping each object to its
+        PNG's HTTP path (``base_cutoutdir`` replaced by ``httpdir``).
+    overwrite : :class:`bool`
+        If True, re-annotate every object even if its PNG already
+        exists.
+    debug : :class:`bool`
+        If True, skip actual annotation and just print each primary's
+        group membership (see Notes).
+    annotate_central_only : :class:`bool`
+        If True, annotate only the primary object itself (no neighbor
+        search/labeling).
+    dry_run : :class:`bool`
+        See Notes -- only suppresses the final log message.
+    verbose : :class:`bool`
+        Passed through to :func:`cutouts_plan`.
+
+    Returns
+    -------
+    None
+        Writes annotated PNGs (and optionally an inventory file) to
+        disk as a side effect; returns early (also None) if there is
+        nothing to do.
 
     """
     from astrometry.libkd.spherematch import match_radec
@@ -534,6 +898,19 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
 
 
 def _cutout_one(args):
+    """Unpack an argument tuple and call :func:`cutout_one`;
+    multiprocessing worker for :func:`do_cutouts`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`cutout_one`'s signature.
+
+    Returns
+    -------
+    See :func:`cutout_one`.
+
+    """
     return cutout_one(*args)
 
 
@@ -541,13 +918,71 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
                unwise_pixscale, galex_pixscale, optical_layer, optical_bands,
                dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts,
                galex_cutouts, rank, iobj):
-    """
-    pixscale = 0.262
-    width = int(30 / pixscale)   # =114
-    height = int(width / 1.3) # =87 [3:2 aspect ratio]
+    """Fetch one object's Legacy Survey (and optionally unWISE/GALEX)
+    cutout(s) via the ``cutout`` viewer-cutouts tool, writing JPEG (and
+    optionally FITS) files.
 
-    shifterimg pull dstndstn/viewer-cutouts:latest
-    shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
+    Always fetches an optical JPEG preview; optionally also an optical
+    FITS cutout (``fits_cutouts``), unWISE JPEG/FITS cutouts at a
+    rescaled width (``unwise_cutouts``; W1/W2 and W3/W4 fetched
+    separately, then merged into one 4-band ``{basefile}-unwise.fits``
+    and the two intermediate per-pair FITS files deleted), and GALEX
+    JPEG/FITS cutouts at a rescaled width (``galex_cutouts``). Each
+    product is fetched via ``cutout.cutout()``, wrapped in a bare
+    ``try/except`` (see Notes). If ``dry_run``, only logs what would be
+    fetched for the JPEG product (no other products are attempted or
+    logged).
+
+    Equivalent standalone invocation via Shifter, for reference::
+
+        shifterimg pull dstndstn/viewer-cutouts:latest
+        shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
+
+    Notes
+    -----
+    Each product fetch is wrapped in a bare ``except:`` that only logs
+    a warning when the failing product's ``suffix == '.jpeg'``; a
+    failure fetching the FITS, unWISE, or GALEX products is silently
+    swallowed with no log message at all.
+
+    Parameters
+    ----------
+    basefile : :class:`str`
+        Output path prefix (without extension); each product's suffix
+        (e.g. ``.jpeg``, ``.fits``, ``-unwise.fits``, ``-galex.jpeg``)
+        is appended to this.
+    ra, dec : :class:`float`
+        Cutout center, degrees.
+    optical_width : :class:`int`
+        Optical cutout width, pixels; unWISE/GALEX widths are derived
+        from this scaled by the ratio of pixel scales.
+    optical_pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    unwise_pixscale, galex_pixscale : :class:`float`
+        unWISE/GALEX pixel scales, arcsec/pixel.
+    optical_layer : :class:`str`
+        Legacy Survey imaging layer name (e.g. ``'ls-dr11'``).
+    optical_bands : :class:`list` of :class:`str`
+        Optical bands to fetch.
+    dry_run : :class:`bool`
+        If True, only log the JPEG fetch command; don't actually fetch
+        anything.
+    fits_cutouts : :class:`bool`
+        If True, also fetch an optical FITS cutout.
+    ivar_cutouts : :class:`bool`
+        If True, also fetch inverse-variance for every non-JPEG
+        product.
+    unwise_cutouts : :class:`bool`
+        If True, also fetch and merge unWISE W1-W4 cutouts.
+    galex_cutouts : :class:`bool`
+        If True, also fetch GALEX FUV/NUV cutouts.
+    rank, iobj : :class:`int`
+        MPI rank and object index, used only in log messages.
+
+    Returns
+    -------
+    None
+        Writes cutout files to disk as a side effect.
 
     """
     from cutout import cutout
@@ -643,13 +1078,75 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
 
 
 def _get_basefiles_one(args):
+    """Unpack an argument tuple and call :func:`get_basefiles_one`;
+    multiprocessing worker for :func:`cutouts_plan`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`get_basefiles_one`'s
+        signature.
+
+    Returns
+    -------
+    See :func:`get_basefiles_one`.
+
+    """
     return get_basefiles_one(*args)
 
 
 def get_basefiles_one(obj, objname, cutoutdir, width=None, group=False,
                       fits_cutouts=True, unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
+    """Resolve one object's output basefile path (and position) and
+    whether it still needs cutouts fetched, for :func:`cutouts_plan`.
 
+    Notes
+    -----
+    ``width`` is accepted but not used anywhere in this function's
+    body except in a commented-out line
+    (``#if width == width_exist:``) -- the intended check (skip only if
+    an existing cutout also matches the requested width) is disabled;
+    currently, any existing cutout of the right products is treated as
+    sufficient regardless of its actual size. The ``objname is None``
+    branch calls ``custom_brickname``, which is not imported anywhere
+    in this module -- see the identical caveat in
+    :func:`get_annotate_filename`'s Notes.
+
+    Parameters
+    ----------
+    obj : :class:`~astropy.table.Table` row
+        Object row; needs ``RA``/``DEC`` (or ``GROUP_RA``/``GROUP_DEC``
+        if ``group``).
+    objname : :class:`str` or None
+        Object name, used to build the basefile path; if None, a brick
+        name is derived from ``obj``'s coordinates instead (see Notes).
+    cutoutdir : :class:`str`
+        Directory for cutout output.
+    width : :class:`float`, optional
+        Unused (see Notes).
+    group : :class:`bool`
+        If True, use ``GROUP_RA``/``GROUP_DEC`` instead of ``RA``/``DEC``.
+    fits_cutouts, unwise_cutouts, galex_cutouts : :class:`bool`
+        Which cutout products to check for existence.
+    overwrite : :class:`bool`
+        If True, mark the object as needing work regardless of existing
+        files.
+    verbose : :class:`bool`
+        If True, log when an object is skipped as already done.
+
+    Returns
+    -------
+    basefile : :class:`str`
+        Output path prefix (without extension) for this object's
+        cutouts.
+    ra, dec : :class:`float`
+        The object's position (from the ``group``-appropriate columns).
+    nobj : :class:`int`
+        1 if cutouts still need to be fetched for this object, 0 if
+        every requested product already exists.
+
+    """
     if group:
         racolumn = 'GROUP_RA'
         deccolumn = 'GROUP_DEC'
@@ -700,7 +1197,83 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
                fits_cutouts=True, ivar_cutouts=False, unwise_cutouts=False,
                galex_cutouts=False, dry_run=False, verbose=False,
                use_catalog_objname=False):
+    """Top-level driver: fetch Legacy Survey (and optionally unWISE/
+    GALEX) cutouts for a catalog of objects, distributed across MPI
+    ranks.
 
+    Rank 0 determines each object's diameter (from ``diamcolumn`` if
+    given, else ``GROUP_DIAMETER`` if ``group``, else
+    :func:`SGA.geometry.choose_geometry`), computes the per-object pixel
+    scale/width (:func:`get_pixscale_and_width`), and builds the cutout
+    plan (:func:`cutouts_plan`); the plan is then broadcast to all
+    ranks. Each rank fetches its assigned slice of objects (in parallel
+    across ``mp`` workers if requested) via :func:`cutout_one`.
+
+    Notes
+    -----
+    ``base_cutoutdir`` is accepted but never referenced in this
+    function's body -- dead parameter (compare
+    :func:`do_annotate`, which does use its ``base_cutoutdir``).
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Objects to fetch cutouts for.
+    layer : :class:`str`
+        Legacy Survey imaging layer name (e.g. ``'ls-dr9'``).
+    default_width : :class:`int`
+        Default cutout width, pixels.
+    default_pixscale : :class:`float`
+        Default optical pixel scale, arcsec/pixel.
+    unwise_pixscale, galex_pixscale : :class:`float`
+        unWISE/GALEX pixel scales, arcsec/pixel.
+    default_bands : :class:`list` of :class:`str`
+        Optical bands to fetch.
+    comm : MPI communicator, optional
+        If given, distributes work across ranks; if None, runs on a
+        single simulated rank.
+    mp : :class:`int`
+        Number of multiprocessing workers per rank.
+    group : :class:`bool`
+        If True, treat ``cat`` as group-level (use ``GROUP_RA``/
+        ``GROUP_DEC``/``GROUP_DIAMETER``) rather than per-object.
+    cutoutdir : :class:`str`
+        Output directory for cutouts.
+    base_cutoutdir : :class:`str`
+        Unused (see Notes).
+    maxdiam_arcmin : :class:`float`
+        Passed to :func:`get_pixscale_and_width`.
+    rescale : :class:`bool`
+        Passed to :func:`get_pixscale_and_width`.
+    diamcolumn : :class:`str`, optional
+        Column in ``cat`` to use directly for diameter (arcmin),
+        overriding the ``group``/:func:`SGA.geometry.choose_geometry`
+        default.
+    overwrite : :class:`bool`
+        If True, re-fetch cutouts even if they already exist.
+    fits_cutouts : :class:`bool`
+        If True, also fetch optical FITS cutouts.
+    ivar_cutouts : :class:`bool`
+        If True, also fetch inverse-variance.
+    unwise_cutouts : :class:`bool`
+        If True, also fetch and merge unWISE W1-W4 cutouts.
+    galex_cutouts : :class:`bool`
+        If True, also fetch GALEX FUV/NUV cutouts.
+    dry_run : :class:`bool`
+        If True, only log what would be fetched (see
+        :func:`cutout_one`'s Notes on the scope of this).
+    verbose : :class:`bool`
+        Passed through to :func:`cutouts_plan`.
+    use_catalog_objname : :class:`bool`
+        Passed through to :func:`cutouts_plan`.
+
+    Returns
+    -------
+    None
+        Writes cutout files to disk as a side effect; returns early
+        (also None) if there is nothing to do.
+
+    """
     if comm is None:
         rank, size = 0, 1
     else:
@@ -781,8 +1354,72 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
                       rescale=False, photo=False, photo_version=None,
                       ssl=False, wisesize=False, lvd=False, zooniverse=False,
                       overwrite=False):
-    """Build a single PDF file of annotated images, to enable fast
-    visual inspection.
+    """Build one or more multi-page PDF montages of already-generated
+    PNG images (rescaled cutouts, annotated cutouts, or photometry QA
+    plots), for fast visual inspection.
+
+    Resolves the image directory and filename convention from
+    ``rescale``/``photo``/(default: annotated), finds every
+    corresponding PNG for ``cat`` (skipping and logging any missing
+    file), and tiles them into a grid (1x1 up to 100 objects... adaptive
+    grid size by object count) across as many pages as needed, split
+    across multiple PDF files if the page count exceeds ``npagemax``
+    per file. In ``rescale`` mode, each panel is also annotated with the
+    object's ``ROW_PARENT``/``OBJNAME`` and a 15 arcsec reference circle.
+
+    Notes
+    -----
+    **Passing ``wisesize=True``, ``lvd=True``, or ``zooniverse=True``
+    raises ``UnboundLocalError``.** Those three branches are each
+    ``pass`` (their intended ``suffix`` assignment, e.g.
+    ``#suffix = '-wisesize'``, is commented out), but ``suffix`` is used
+    unconditionally a few lines later to build the output PDF filename.
+    Only ``ssl``, ``photo``, or the plain default branch actually assign
+    ``suffix`` and work correctly. This function currently cannot be
+    called successfully with any of ``wisesize``/``lvd``/``zooniverse``
+    set.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Objects to montage; needs ``RA``, ``DEC``, and (in ``rescale``
+        mode) ``ROW_PARENT``, ``OBJNAME``.
+    cutoutdir : :class:`str`
+        Directory containing rescaled JPEG cutouts (``rescale`` mode).
+    annotatedir : :class:`str`
+        Directory containing annotated PNGs (default mode).
+    photodir : :class:`str`
+        Directory containing photometry QA PNGs (``photo`` mode).
+    region : :class:`str`
+        Survey region, used in the output filename and log messages.
+    npagemax : :class:`int`
+        Maximum pages per output PDF file; more pages are split across
+        additional PDF files.
+    ssl_version : :class:`str`, optional
+        Required if ``ssl=True`` (used in the output filename/QA
+        directory); function logs and returns early if missing.
+    rescale : :class:`bool`
+        If True, montage rescaled JPEG cutouts from ``cutoutdir``.
+    photo : :class:`bool`
+        If True, montage photometry QA PNGs from ``photodir``; requires
+        ``photo_version``.
+    photo_version : :class:`str`, optional
+        Required if ``photo=True`` (used in the output filename);
+        function logs and returns early if missing.
+    ssl : :class:`bool`
+        If True, write output to the SSL QA directory with an
+        ``-ssl-{ssl_version}`` filename suffix.
+    wisesize, lvd, zooniverse : :class:`bool`
+        Currently broken -- see Notes.
+    overwrite : :class:`bool`
+        If False and an output PDF already exists, skip it.
+
+    Returns
+    -------
+    None
+        Writes PDF montage file(s) to disk as a side effect; returns
+        early (also None) if ``ssl``/``photo`` is set without its
+        required version string, or if no image files are found.
 
     """
     import matplotlib.pyplot as plt
