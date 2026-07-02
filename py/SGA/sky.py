@@ -17,8 +17,32 @@ from SGA.logger import log
 
 
 def find_in_mclouds(cat, mcloud='LMC'):
-    # flag objects in the LMC and SMC
+    """Flag catalog objects falling within a Magellanic Cloud's
+    elliptical footprint.
 
+    Looks up ``mcloud``'s own row in ``cat`` (by ``OBJNAME``) to get its
+    center and geometry (via :func:`SGA.geometry.choose_geometry`), then
+    flags every object in ``cat`` inside that ellipse.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog to search; must contain a row with ``OBJNAME == mcloud``.
+    mcloud : :class:`str`
+        Name of the Magellanic Cloud to use, e.g. ``'LMC'`` or ``'SMC'``.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Boolean mask, length ``len(cat)``, True for objects inside the
+        cloud's ellipse.
+
+    Raises
+    ------
+    ValueError
+        If ``mcloud`` is not found in ``cat``.
+
+    """
     from SGA.geometry import choose_geometry
 
     gal = cat[cat['OBJNAME'] == mcloud]
@@ -42,7 +66,25 @@ def find_in_mclouds(cat, mcloud='LMC'):
 
 
 def find_in_gclpne(cat):
-    # flag objects in GCl / PNe
+    """Flag catalog objects falling within a Galactic globular cluster or
+    planetary nebula's footprint.
+
+    Reads legacypipe's packaged globular-cluster/PNe reference catalog
+    (``NGC-star-clusters.fits``) and flags every object in ``cat``
+    inside any of its elliptical footprints.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog to search; needs ``RA``/``DEC`` columns.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Boolean mask, length ``len(cat)``, True for objects inside any
+        cluster/PNe ellipse.
+
+    """
     from importlib import resources
     import fitsio
 
@@ -62,8 +104,21 @@ def find_in_gclpne(cat):
 
 
 def map_bxby(bx, by, from_wcs, to_wcs):
-    """Map, (bx, by) coordinates from one WCS to another (e.g.,
-    optical-->GALEX).
+    """Map ``(bx, by)`` pixel coordinates from one WCS to another (e.g.,
+    optical to GALEX).
+
+    Parameters
+    ----------
+    bx, by : :class:`float` or array-like
+        Pixel coordinates in ``from_wcs``.
+    from_wcs, to_wcs : WCS
+        Source and destination WCS objects (0-indexed pixel convention,
+        via ``wcs.pixelxy2radec``/``wcs.radec2pixelxy``).
+
+    Returns
+    -------
+    to_bx, to_by : :class:`float` or array-like
+        Pixel coordinates in ``to_wcs``.
 
     """
     ra, dec = from_wcs.wcs.pixelxy2radec(bx+1., by+1)
@@ -72,6 +127,26 @@ def map_bxby(bx, by, from_wcs, to_wcs):
 
 
 def simple_wcs(racenter, deccenter, width, pixscale=0.262):
+    """Build a simple, square, tangent-plane (TAN) WCS centered at a
+    given sky position.
+
+    Parameters
+    ----------
+    racenter, deccenter : :class:`float`
+        Center of the mosaic, degrees; placed at the reference pixel
+        (``CRPIX`` = center of the array, ``CRVAL`` = this position).
+    width : :class:`int`
+        Mosaic width and height, in pixels (square).
+    pixscale : :class:`float`
+        Pixel scale, arcsec/pixel. RA increases toward -x (standard sky
+        orientation, East left).
+
+    Returns
+    -------
+    :class:`~astropy.wcs.WCS`
+        The constructed WCS.
+
+    """
     from astropy.wcs import WCS
     from astropy.io import fits
     hdr = fits.Header()
@@ -92,8 +167,44 @@ def simple_wcs(racenter, deccenter, width, pixscale=0.262):
 
 
 def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):
-    """Quickly get the CCDs touching this custom brick.  This code is mostly taken
-    from legacypipe.runbrick.stage_tims.
+    """Determine which CCDs (from an already-loaded CCDs table) touch a
+    custom brick centered on one galaxy, and augment that galaxy's row
+    with the match.
+
+    Mostly taken from ``legacypipe.runbrick.stage_tims``. Distinct from
+    :func:`SGA.coadds.get_ccds`, which queries a legacypipe survey
+    object directly (``survey.ccds_touching_wcs``) rather than filtering
+    an already-loaded ``allccds`` table; the two are not
+    interchangeable despite the shared name.
+
+    Parameters
+    ----------
+    allccds : CCDs table
+        Full CCDs table to search (e.g. from a legacypipe survey's
+        ``get_ccds_readonly()``), in the format expected by
+        ``legacypipe.survey.ccds_touching_wcs``.
+    onegal : :class:`~astropy.table.Row`
+        Single galaxy row; needs ``RA``, ``DEC``, ``ROW_PARENT``. If at
+        least one CCD touches, updated in place with ``NCCD`` (number
+        of touching CCDs) and ``FILTERS`` (sorted, concatenated unique
+        filter letters).
+    width_pixels : :class:`int`
+        Mosaic width, in pixels, used to build the search WCS.
+    pixscale : :class:`float`
+        Pixel scale, arcsec/pixel.
+    return_ccds : :class:`bool`
+        If True, return a ``(ccds, onegal_table)`` tuple instead of just
+        ``onegal_table``.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        If ``return_ccds=False``: ``onegal`` (updated with
+        ``NCCD``/``FILTERS``) wrapped as a single-row Table; empty if no
+        CCDs touch. If ``return_ccds=True``: a ``(ccds, onegal_table)``
+        tuple, where ``ccds`` holds the matched CCDs (``RA``, ``DEC``,
+        ``CAMERA``, ``EXPNUM``, ``PLVER``, ``CCDNAME``, ``FILTER``,
+        ``ROW_PARENT``) and both are empty Tables if none touch.
 
     """
     from SGA.brick import custom_brickname
@@ -138,26 +249,31 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
 
 
 def in_ellipse_mask_sky(racen, deccen, semia, semib, pa, ras, decs):
-    """
-    Return a mask for points within an elliptical region on the sky,
-    using astronomical position‐angle convention.
+    """Test whether points on the sky fall inside an elliptical region,
+    using the astronomical position-angle convention.
+
+    Uses a flat-sky (tangent-plane-like) approximation: wraps the RA
+    offset into [-180, 180) and scales it by ``cos(deccen)`` to correct
+    for meridian convergence, then applies the same rotated-ellipse test
+    as :func:`SGA.geometry.in_ellipse_mask`.
 
     Parameters
     ----------
-    racen, deccen : float
+    racen, deccen : :class:`float`
         Center of the ellipse, in degrees (RA, Dec).
-    semia, semib : float
-        Semi‐major and semi‐minor axes of the ellipse, in degrees.
-    pa : float
+    semia, semib : :class:`float`
+        Semi-major and semi-minor axes of the ellipse, in degrees.
+    pa : :class:`float`
         Position angle of the major axis, in degrees, measured
-        counter‐clockwise from +Dec (North) toward +RA (East).
-    ras, decs : array_like
+        counterclockwise from +Dec (North) toward +RA (East).
+    ras, decs : array-like
         Point coordinates to test (RA, Dec), in degrees.
 
     Returns
     -------
-    mask : ndarray of bool
+    :class:`numpy.ndarray` of :class:`bool`
         True for points inside or on the ellipse.
+
     """
     # compute offsets in a “flat‐sky” projection
     # wrap RA difference into [–180, +180]
@@ -180,7 +296,52 @@ def in_ellipse_mask_sky(racen, deccen, semia, semib, pa, ras, decs):
 
 
 def find_close(cat, fullcat, rad_arcsec=1., isolated=False, return_counts=False):
+    """Find objects in ``cat`` with a positional match in ``fullcat``
+    within a given search radius.
 
+    For each object in ``cat`` with at least one match in ``fullcat``
+    (every object always matches itself at minimum, since
+    ``notself=False``), optionally restrict to those whose *only* match
+    is itself (``isolated=True``, i.e. no other ``fullcat`` object
+    within ``rad_arcsec``).
+
+    Notes
+    -----
+    When ``isolated=True`` and ``return_counts=True``, the returned
+    ``ningroup`` is misaligned with ``primaries``/``groups``: it is
+    appended for *every* object with a match (i.e. essentially all of
+    ``cat``, since self-matches always count), not just the isolated
+    ones that actually end up in ``primaries``/``groups``. So its
+    length and per-row correspondence to ``primaries`` only holds when
+    ``isolated=False``.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Objects to search for matches of; needs ``RA``/``DEC``.
+    fullcat : :class:`~astropy.table.Table`
+        Catalog to match against; needs ``RA``/``DEC``.
+    rad_arcsec : :class:`float`
+        Search radius, arcsec.
+    isolated : :class:`bool`
+        If True, keep only objects whose sole match in ``fullcat`` is
+        themselves (group size 1).
+    return_counts : :class:`bool`
+        If True, also return the per-group match count (see Notes for a
+        caveat when combined with ``isolated=True``).
+
+    Returns
+    -------
+    primaries : :class:`~astropy.table.Table` or :class:`list`
+        Matched objects from ``cat``, sorted by RA; ``[]`` if none.
+    groups : :class:`~astropy.table.Table` or :class:`list`
+        All ``fullcat`` matches (including self-matches), sorted by RA;
+        ``[]`` if none.
+    ningroup : :class:`numpy.ndarray`, only if ``return_counts=True``
+        Match-group size per entry (see Notes for the ``isolated=True``
+        misalignment caveat).
+
+    """
     rad = rad_arcsec / 3600.
     allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
@@ -218,16 +379,61 @@ def find_close(cat, fullcat, rad_arcsec=1., isolated=False, return_counts=False)
 
 
 def choose_primary(group, verbose=False, keep_all_mergers=False, ignore_objtype=False):
-    """Choose the primary member of a group.
+    """Choose which member(s) of a group of closely-spaced objects to
+    keep as primary, trying a sequence of increasingly permissive
+    criteria until exactly one candidate is selected.
 
-    keep_all is helpful for returning a group catalog without dropping any
-    sources.
+    Tries masks in order (first one selecting exactly 1 object wins):
+    objects with (in order) any diameter, both LIT and HyperLeda
+    diameters, both diameters plus a redshift, both diameters plus a
+    redshift (ignoring ``OBJTYPE``), both diameters plus zero
+    separation, both diameters, either diameter plus zero separation,
+    zero separation, or (unless ``ignore_objtype``) simply
+    ``OBJTYPE == 'G'``. If ``keep_all_mergers``, an ``OBJTYPE`` in
+    ``{'GPair', 'GTrpl'}`` is tried first, ahead of all of the above. If
+    none of these narrow the group to exactly one object, falls back to
+    preferring well-known catalog name prefixes (``NGC``, ``UGC``,
+    etc.), then finally to the object with minimum separation from the
+    group's search center.
 
-    if keep_all_mergers=True then always keep {GPair,GTrpl} sources, even
-      if they do not have a diameter.
+    Notes
+    -----
+    When ``keep_all_mergers=False``, the ``IG`` mask is computed as
+    ``np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair',
+    group['OBJTYPE'] == 'GTrpl')`` -- but :func:`numpy.logical_or` only
+    takes two positional array arguments before its keyword-only ``out``
+    parameter, so the third argument here binds to ``out`` instead of
+    being OR'd in. The result is that ``IG`` is actually just
+    ``(OBJTYPE == 'G') | (OBJTYPE == 'GPair')``, silently excluding
+    ``'GTrpl'`` objects from every ``IG``-gated mask (``mask1``-``mask3``,
+    ``mask9``). A commented-out line just above
+    (``#IG = np.logical_or.reduce((...))``) shows the originally-intended
+    3-way OR.
 
-    if allow_vetos=True then do not drop systems that are in a 'veto' list,
-      even if they overlap with another source.
+    Parameters
+    ----------
+    group : :class:`~astropy.table.Table`
+        Candidate members of one close-pair/group, from
+        :func:`resolve_close`; needs ``OBJTYPE``, ``DIAM_LIT``,
+        ``DIAM_HYPERLEDA``, ``Z``, ``SEP``, ``OBJNAME``.
+    verbose : :class:`bool`
+        If True, print the fallback-selection diagnostic table when the
+        primary criteria don't isolate a single object.
+    keep_all_mergers : :class:`bool`
+        If True, always keep ``OBJTYPE in {'GPair', 'GTrpl'}`` sources
+        first, even without a diameter (used when returning a group
+        catalog without dropping merger-flagged sources).
+    ignore_objtype : :class:`bool`
+        If True, drop the ``OBJTYPE == 'G'`` requirement from the
+        diameter/redshift-based masks, considering all objects
+        regardless of type.
+
+    Returns
+    -------
+    keep : :class:`numpy.ndarray`
+        Indices into ``group`` of the object(s) to keep.
+    drop : :class:`numpy.ndarray`
+        Indices into ``group`` of the object(s) to drop.
 
     """
     if keep_all_mergers:
@@ -294,11 +500,60 @@ def choose_primary(group, verbose=False, keep_all_mergers=False, ignore_objtype=
 def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
                   keep_all_mergers=False, objname_column='OBJNAME',
                   ignore_objtype=False, trim=True, verbose=False):
-    """Resolve close objects.
+    """Group closely-spaced objects in ``refcat`` (searching from the
+    positions in ``cat``) and flag which member of each group is
+    primary, via :func:`choose_primary`.
 
-    maxsep in arcsec
-    cat - smaller catalog
-    refcat - full catalog
+    For every group of 2+ ``refcat`` objects within ``maxsep`` of a
+    ``cat`` position, assigns a shared ``GROUP_ID``, records
+    ``NGROUP``/``SEPARATION`` (separation from the ``cat`` search
+    center), and calls :func:`choose_primary` to decide which member(s)
+    to keep (unless ``keep_all``, which keeps every member). A
+    hardcoded single-entry veto list (currently just
+    ``'2MASX J15134005+2607307'``, which overlaps 3C 315 due to a
+    coordinate error in the latter) can restore an object to primary
+    status regardless of :func:`choose_primary`'s decision, if
+    ``allow_vetos`` is set.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Smaller catalog of search centers; needs ``RA``/``DEC``.
+    refcat : :class:`~astropy.table.Table`
+        Full catalog to group/flag; needs ``RA``/``DEC``, ``OBJTYPE``,
+        ``PGC``, ``Z``, ``DIAM_LIT``, ``DIAM_HYPERLEDA``, and
+        ``objname_column``. Modified in place with the bookkeeping
+        columns described below (removed again before returning if
+        ``trim=True``).
+    maxsep : :class:`float`
+        Grouping search radius, arcsec.
+    keep_all : :class:`bool`
+        If True, keep every member of every group as primary (skip
+        :func:`choose_primary` entirely).
+    allow_vetos : :class:`bool`
+        If True, restore hardcoded veto-listed objects to primary status
+        even if :func:`choose_primary` dropped them.
+    keep_all_mergers : :class:`bool`
+        Passed to :func:`choose_primary`.
+    objname_column : :class:`str`
+        Column in ``refcat``/``cat`` holding each object's name, used
+        for veto matching and verbose logging.
+    ignore_objtype : :class:`bool`
+        Passed to :func:`choose_primary`.
+    trim : :class:`bool`
+        If True, return only the primary objects, with the bookkeeping
+        columns (``GROUP_ID``, ``PRIMARY``, ``NGROUP``, ``SEPARATION``,
+        ``DONE``) removed. If False, return the full ``refcat`` with
+        those columns intact (minus ``DONE``).
+    verbose : :class:`bool`
+        If True, print per-group keep/drop diagnostics as grouping
+        proceeds.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``refcat`` restricted to primary objects (if ``trim=True``) or
+        the full, annotated ``refcat`` (if ``trim=False``).
 
     """
     VETO = [
