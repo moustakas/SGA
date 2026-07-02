@@ -23,7 +23,7 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `generate-sga-slurm` - Generate NERSC SLURM batch scripts for any SGA processing stage (see `etc/README.sga-slurm`)
   - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
   - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
-  - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS; derives `GALAXY` and `ALTNAMES` columns (see below)
+  - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS, then merge dr11-south + dr11-north into a single deduplicated `SGA2025-{version}.fits`; derives `GALAXY` and `ALTNAMES` columns (see below)
 - `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
@@ -200,6 +200,37 @@ this order (all steps applied per object):
 `ALTNAMES` (str200) = first three remaining CROSSIDS (after the promoted GALAXY is removed),
 pipe-separated, with prefix normalization and case-insensitive deduplication applied;
 empty string when none remain.
+
+### Region merging (`bin/SGA2025-build-catalog`)
+
+After both per-region catalogs (`SGA2025-dr11-south-{version}.fits`,
+`SGA2025-dr11-north-{version}.fits`) are built, `merge_regions()` combines
+them into a single `SGA2025-{version}.fits` (both `SGA2025` and `TRACTOR`
+extensions), written to the same `--outdir`:
+
+- Objects present in both regions (`REGION` has both `REGIONBITS['dr11-south']`
+  and `REGIONBITS['dr11-north']` set, from `SGA.coadds.REGIONBITS`) are
+  deduplicated to a single row, keeping whichever side has more "good" bands
+  (`FMASKED_AP00_{G,R,I,Z} < 0.5`). Ties are broken by preferring good r-band
+  coverage when only one side has it, then by defaulting to dr11-south
+  (dr11-north's z-band is substantially worse, so ties favor south in nearly
+  all cases).
+- `REGION` self-heal: a row that carries both region bits but has no actual
+  counterpart in the other region's per-region file (some pixels overlap the
+  other region's footprint but not enough to yield a processed object there)
+  has `REGION` corrected down to the single region it actually came from.
+- The full run — per-region processing logs (including messages from
+  `read_sga_sample`/`_read_catalog` in `SGA.py`, which share the same
+  singleton logger) plus the merge summary — is captured to both stdout and
+  `SGA2025-merge-{version}.txt` in `--outdir`, via a `logging.Handler` that
+  appends every record to a shared list written out at the end of `main()`.
+- This merge step runs automatically whenever both regions are processed in
+  one invocation (i.e. `--region` is not passed).
+
+`SGA.read_sga_sample(region=None, ...)` (the default) reads this merged
+catalog. Pass an explicit `region` to read one of the per-region files
+instead. `region` is required (raises `ValueError` if omitted) when
+`beta=True`, since there is no merged beta/pre-release catalog.
 
 ## Testing
 
