@@ -189,7 +189,83 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
                   clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
                   size=1, mp=1, redo_failures=False, small_bricks_first=True):
-    """Figure out which files are missing and still need to be processed.
+    """Determine which objects still need processing for a given pipeline
+    stage, and partition the remainder across MPI ranks.
+
+    Exactly one of ``coadds``, ``ellipse``, ``htmlplots``, ``htmlindex``
+    must be True; it selects the stage's "is-done" marker file naming
+    convention and, where applicable, the marker file its completion
+    depends on (e.g. ``ellipse`` depends on ``coadds`` having finished).
+    For each object, resolves its checkfile (and dependency file, if any)
+    via :func:`get_galaxy_galaxydir`, then classifies it as ``'done'``,
+    ``'fail'``, ``'wait'`` (dependency not yet satisfied), or ``'todo'``
+    using ``SGA.io.missing_files_one`` (optionally in parallel via
+    ``mp``). Objects still ``'todo'`` are partitioned across ``size`` MPI
+    ranks by :func:`SGA.mpi.distribute_work`, weighted by diameter so
+    each rank's total workload is balanced.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table`, optional
+        Objects (galaxies or groups) to check; must be provided unless
+        ``bricks`` is given instead. Cannot be a single
+        :class:`~astropy.table.Row`.
+    bricks : :class:`~astropy.table.Table`, optional
+        Alternative to ``sample`` for computing the initial object count
+        when ``sample`` is None. Note: every current caller passes
+        ``sample``, and the rest of the function body (e.g.
+        ``sample[DIAMCOL]``, :func:`get_galaxy_galaxydir`) unconditionally
+        uses ``sample`` -- calling with only ``bricks`` and no ``sample``
+        would raise later in the function rather than being fully
+        supported.
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``), passed to
+        :func:`get_galaxy_galaxydir`.
+    coadds, ellipse, htmlplots, htmlindex : :class:`bool`
+        Select the pipeline stage to check; exactly one should be True.
+    clobber : :class:`bool`
+        If True, treat every object as ``'todo'`` regardless of existing
+        marker files.
+    clobber_overwrite : :class:`bool`, optional
+        If not None, overrides ``clobber`` with this value.
+    no_groups : :class:`bool`
+        If True, treat each galaxy independently rather than by group;
+        switches the diameter column used for load-balancing from
+        ``GROUP_DIAMETER`` to ``DIAM``.
+    verbose : :class:`bool`
+        If True, log timing information for the galaxy-directory lookup
+        and the missing-file scan.
+    datadir, htmldir : :class:`str`, optional
+        Data/HTML root directories, passed to :func:`get_galaxy_galaxydir`.
+    size : :class:`int`
+        Number of MPI ranks to distribute the ``'todo'`` workload across.
+    mp : :class:`int`
+        Number of multiprocessing workers used to check marker files.
+    redo_failures : :class:`bool`
+        If True, move previously-failed objects back into the ``'todo'``
+        set instead of reporting them in ``fail_indices``.
+    small_bricks_first : :class:`bool`
+        Passed to :func:`SGA.mpi.distribute_work`; if True, each rank
+        processes its smallest-diameter objects first.
+
+    Returns
+    -------
+    suffix : :class:`str`
+        Short label for the selected stage (``'coadds'``, ``'ellipse'``,
+        ``'html'``, or ``'htmlindex'``).
+    todo_indices : :class:`list` of :class:`numpy.ndarray`
+        One array of ``sample`` indices per MPI rank, load-balanced by
+        diameter; ``[]`` if nothing is left to do.
+    done_indices : :class:`list` of :class:`numpy.ndarray`
+        Single-element list holding the indices of already-completed
+        objects (empty array if none).
+    fail_indices : :class:`list` of :class:`numpy.ndarray`
+        Single-element list holding the indices of previously-failed
+        objects (empty if none, or if ``redo_failures`` moved them back
+        into ``todo_indices``).
+    wait_indices : :class:`list` of :class:`numpy.ndarray`
+        Single-element list holding the indices of objects waiting on an
+        unfinished dependency (empty array if none).
 
     """
     from glob import glob
@@ -1952,12 +2028,36 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
 
 def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
                     BITS=OPTMASKBITS, allmasks=False):
-    """Unpack the maskbits bitmask, which has shape [nobj, width,
-    width], to include the per-band data with resulting shape
-    [nobj,nband,width,width].
+    """Unpack a packed integer maskbits array into per-band boolean masks.
 
-    The result is a *boolean* mask and, optionally, all the individual
-    masks (brightstarmask, etc.)
+    For each object, the bright-star, reference (other-SGA), Gaia-star,
+    and galaxy object-mask bits (from ``BITS``) are unioned into a single
+    object mask, which is then OR'd into every band's own data-quality
+    bit to produce a per-band boolean mask.
+
+    Parameters
+    ----------
+    maskbits : :class:`numpy.ndarray`
+        Packed bitmask, shape ``(nobj, width, width)``, as built by
+        ``_update_masks`` with ``build_maskbits=True``.
+    bands : :class:`list` of :class:`str`
+        Band names; each must have a corresponding entry in ``BITS``.
+    BITS : :class:`dict`
+        Mapping of mask/band name to bit value (default
+        ``SGA.SGA.OPTMASKBITS``); must contain ``'brightstar'``,
+        ``'reference'``, ``'gaiastar'``, ``'galaxy'``, and each name in
+        ``bands``.
+    allmasks : :class:`bool`
+        If True, also return the individual (pre-union) object masks.
+
+    Returns
+    -------
+    masks_perband : :class:`numpy.ndarray`
+        Boolean mask, shape ``(nobj, nband, width, width)``, True where
+        masked; always returned.
+    brightstarmasks, refmasks, gaiamasks, galmasks : :class:`numpy.ndarray`
+        Boolean masks, each shape ``(nobj, width, width)``, one per
+        object-mask type; only returned when ``allmasks=True``.
 
     """
     nband = len(bands)
