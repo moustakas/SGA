@@ -1,18 +1,39 @@
 #!/usr/bin/env python
-"""Parse the SMUDGes catalog for use with the 'custom' (external) catalog.
+"""Parse the SMUDGes ultra-diffuse-galaxy catalog into a row format
+ready for manual splicing into SGA's ``custom-external`` catalog (see
+``SGA.external.read_custom_external``).
 
-Run this script and then append (cut and paste) the results into the
-custom catalog.
+Reads ``SMUDGes_catalog.6_23.ascii`` (MRT format) from
+``{sga_dir()}/parent/external/``, restricts to ``VC == 0`` (a SMUDGes
+quality/visual-confirmation flag), then restricts further to
+``2*Re > 15`` arcsec (SGA's minimum-diameter cutoff for a "real"
+candidate), excluding two named objects whose SMUDGes diameters are
+known to be very wrong (hardcoded veto by ``OBJNAME``, listed below).
+For each surviving object, converts the half-light radius ``Re``
+(arcsec) to a diameter (arcmin, factor of 2/60 -- **not** yet the
+Re->RHolm 1.2x correction, which is applied downstream in
+``SGA2025-build-parent``'s ``build_parent_nocuts``/
+``SGA.parent.build_parent_nocuts``) and wraps ``PA`` into [0, 360) via
+plain ``% 360``. Row numbers are captured *before* the ``VC`` cut, so
+they still index correctly into the original
+``SMUDGes_catalog.6_23.ascii`` file for cross-referencing.
 
-Read 7,070 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/SMUDGes_catalog.6_23.ascii
-Trimmed to 6,805/7,070 objects with VC==0.
-Trimmed to 2,655/6,805 objects with diam>15 arcsec.
+Writes one leading-comma CSV row per object (``OBJTYPE`` is left blank
+for the first field, to be filled in by hand after pasting) to
+``smudges.txt`` in the current directory. Run this script, then
+cut-and-paste the contents of ``smudges.txt`` into the custom catalog.
 
-# The following diameters are very wrong, so remove by hand.
+Reference run (SGA-2025), for provenance:
 
-SMDG J2152023-642205,328.00947,-64.36812,3.652333333333333,0.51,292.05,13.14,r,Row 6671 in 'SMUDGes_catalog.6_23.ascii'
-SMDG J0052040-352127,13.01655,-35.35749,4.142,0.51,306.84000000000003,14.68,r,Row 295 in 'SMUDGes_catalog.6_23.ascii'
+    Read 7,070 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/SMUDGes_catalog.6_23.ascii
+    Trimmed to 6,805/7,070 objects with VC==0.
+    Trimmed to 2,655/6,805 objects with diam>15 arcsec.
 
+The following two objects' SMUDGes diameters are very wrong and are
+excluded by hand:
+
+    SMDG J2152023-642205,328.00947,-64.36812,3.652333333333333,0.51,292.05,13.14,r,Row 6671 in 'SMUDGes_catalog.6_23.ascii'
+    SMDG J0052040-352127,13.01655,-35.35749,4.142,0.51,306.84000000000003,14.68,r,Row 295 in 'SMUDGes_catalog.6_23.ascii'
 
 """
 import os
