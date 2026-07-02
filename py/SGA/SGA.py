@@ -1997,7 +1997,52 @@ def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
 def _update_masks(brightstarmask, gaiamask, refmask, galmask,
                   mask_perband, bands, sz, MASKDICT=None, build_maskbits=False,
                   do_resize=False, verbose=False):
-    """Update the masks.
+    """Combine the bright-star, Gaia-star, reference (other-SGA), and galaxy
+    object masks with the per-band data-quality mask.
+
+    Either packs all four object masks plus each per-band mask into a
+    single :class:`numpy.int32` bitmask (``build_maskbits=True``, using
+    the bit values in ``MASKDICT``), or returns a per-band boolean mask
+    array with the object masks unioned into each band
+    (``build_maskbits=False``). Object masks are optionally resized (e.g.
+    from a lower working resolution) to the final mosaic shape ``sz``
+    before combining.
+
+    Parameters
+    ----------
+    brightstarmask, gaiamask, refmask, galmask : :class:`numpy.ndarray`
+        Boolean object masks (bright star, Gaia star, other-SGA reference
+        source, neighboring galaxy), each shape ``sz`` or, if
+        ``do_resize=True``, the working resolution to be resized from.
+    mask_perband : :class:`numpy.ndarray`
+        Boolean per-band data-quality mask, shape ``(len(bands), *sz)``.
+    bands : :class:`list` of :class:`str`
+        Band names corresponding to the leading axis of ``mask_perband``.
+    sz : :class:`tuple`
+        Output mosaic shape, ``(ny, nx)``.
+    MASKDICT : :class:`dict`, optional
+        Mapping of mask name (``'brightstar'``, ``'reference'``,
+        ``'galaxy'``, ``'gaiastar'``, and each band name) to its bit value.
+        Required when ``build_maskbits=True``.
+    build_maskbits : :class:`bool`
+        If True, pack all masks into a single bitmask array using
+        ``MASKDICT`` rather than returning per-band boolean masks.
+    do_resize : :class:`bool`
+        If True, resize ``brightstarmask``, ``refmask``, ``galmask``, and
+        ``gaiamask`` to ``sz`` (edge-mode, no anti-aliasing) before
+        combining, e.g. when they were built at a different working
+        resolution than ``mask_perband``.
+    verbose : :class:`bool`
+        If True and ``build_maskbits=False``, print the fractional area
+        covered by each object mask and the total unioned mask.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        If ``build_maskbits=True``: an ``int32`` bitmask, shape ``sz``. If
+        ``build_maskbits=False``: a boolean mask, shape
+        ``(len(bands), *sz)``, with the unioned object masks combined into
+        each band's data-quality mask.
 
     """
     from skimage.transform import resize
@@ -2266,9 +2311,49 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 def _compute_major_minor_masks(flux_sga, fracflux_sga, allgalsrcs, galsrcs_optflux,
                                FMAJOR, objsrc, use_tractor_position_obj,
                                arcsec_between):
-    """Classify Tractor galaxies into major / minor companions.
+    """Classify neighboring extended Tractor sources as "major" or "minor"
+    companions of the current SGA source, by flux ratio.
 
-    Returns (major_mask, minor_mask), both boolean arrays of length len(allgalsrcs).
+    A source is "major" if its optical flux is at least ``FMAJOR`` times
+    the SGA source's flux. If the SGA source's own Tractor photometry is
+    significantly blended (``fracflux_sga > 0.2``, i.e. its flux estimate
+    is contaminated by neighbors), major-companion status is additionally
+    restricted to sources separated by more than the SGA source's
+    ``shape_r``, to avoid classifying a Tractor shred of the SGA source
+    itself as a major companion.
+
+    Parameters
+    ----------
+    flux_sga : :class:`float`
+        Optical flux of the current SGA source. If <= 0 (or
+        ``allgalsrcs`` is empty), every source is classified minor.
+    fracflux_sga : :class:`float`
+        Tractor ``fracflux`` of the SGA source, used to detect blending.
+    allgalsrcs : :class:`~astropy.table.Table`
+        Candidate neighboring extended Tractor sources.
+    galsrcs_optflux : :class:`numpy.ndarray`
+        Optical flux of each source in ``allgalsrcs``, same length.
+    FMAJOR : :class:`float`
+        Minimum flux ratio (relative to ``flux_sga``) for "major"
+        classification.
+    objsrc : :class:`~astropy.table.Table` row or None
+        Tractor row for the current SGA source, used for the
+        separation/blending check; if None, that check is skipped.
+    use_tractor_position_obj : :class:`bool`
+        Unused in the current implementation (retained for call-site
+        symmetry with related per-object flags).
+    arcsec_between : callable
+        Function ``(ra1, dec1, ra2, dec2) -> arcsec`` used to compute
+        angular separations.
+
+    Returns
+    -------
+    major_mask : :class:`numpy.ndarray`
+        Boolean array, length ``len(allgalsrcs)``, True for major
+        companions.
+    minor_mask : :class:`numpy.ndarray`
+        Boolean array, length ``len(allgalsrcs)``, the complement of
+        ``major_mask``.
 
     """
     if len(allgalsrcs) == 0 or flux_sga <= 0.0:
@@ -2296,12 +2381,48 @@ def _compute_major_minor_masks(flux_sga, fracflux_sga, allgalsrcs, galsrcs_optfl
 
 def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_obj,
                       ELLIPSEMODE, ELLIPSEBIT, stage="initial"):
-    """
-    stage = "initial" or "final".
+    """Build diagnostic log messages for an object's ``ELLIPSEMODE`` and
+    ``ELLIPSEBIT`` state, warning where a runtime masking/geometry
+    decision is not reflected in the corresponding bit flag.
 
-    - initial: mimic your existing logging of ELLIPSEMODE + initial ELLIPSEBIT,
-      and check that same-named bits in ELLIPSEMODE → ELLIPSEBIT are propagated.
-    - final: mimic your "after all bits" logging of final ELLIPSEBIT.
+    At ``stage='initial'``, reports which ``ELLIPSEMODE`` bits are set
+    (with special handling for ``NORADWEIGHT``, checked against the
+    effective ``use_radial_weight`` decision, and ``TRACTORGEO``, checked
+    against ``use_tractor_geometry_obj``) and which ``ELLIPSEBIT`` bits are
+    already set before processing; for each mode with a same-named
+    ``ELLIPSEBIT`` entry, warns via ``log.warning`` if the mode is active
+    but the bit was not propagated. At ``stage='final'``, simply reports
+    every ``ELLIPSEBIT`` bit set on the object after processing completes.
+
+    Parameters
+    ----------
+    log : :class:`~logging.Logger`
+        Logger used for the consistency warnings (see ``SGA.logger.log``).
+    iobj : :class:`int`
+        Index of the object within the current group's sample.
+    obj : :class:`~astropy.table.Table` row
+        Sample row to read ``ELLIPSEMODE`` and ``ELLIPSEBIT`` from.
+    use_radial_weight : :class:`bool`
+        Effective radial-weighting decision for this object, checked
+        against the ``NORADWEIGHT`` mode/bit for consistency.
+    use_tractor_geometry_obj : :class:`bool`
+        Effective Tractor-geometry-override decision for this object
+        (e.g. from satellite classification), checked against the
+        ``TRACTORGEO`` mode/bit for consistency.
+    ELLIPSEMODE : :class:`dict`
+        Mapping of mode name to bit value.
+    ELLIPSEBIT : :class:`dict`
+        Mapping of bit name to bit value.
+    stage : :class:`str`
+        ``'initial'`` to report ``ELLIPSEMODE`` state plus pre-processing
+        ``ELLIPSEBIT`` bits (with consistency checks), or ``'final'`` to
+        report the fully-updated ``ELLIPSEBIT`` bits after processing.
+
+    Returns
+    -------
+    :class:`list` of :class:`str`
+        Human-readable messages describing the bits that are set, for the
+        caller to log.
 
     """
     mode_bits = obj["ELLIPSEMODE"]
@@ -2355,18 +2476,80 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     opt_pixscale, use_tractor_position, use_radial_weight,
     use_radial_weight_for_overlaps, SATELLITE_FRAC, get_geometry,
     ellipses_overlap, allgalsrcs, opt_bands, tractorgeo):
-    """
-    Decide per-object:
-      - use_radial_weight_obj[i]: whether to use radial weighting in moments
-      - use_tractor_geometry_obj[i]: whether to force Tractor geometry for satellites
+    """Decide, per object, whether to apply radial weighting in the moment
+    fit and whether to force Tractor geometry, based on overlap and
+    satellite/cluster classification.
 
-    Global knobs:
-      - use_radial_weight: default radial-weighting preference (True/False)
-      - use_radial_weight_for_overlaps: if False, *any* overlap disables radial weighting
+    For each object, computes approximate geometry and checks for overlap
+    with every other object in ``sample`` (via ``ellipses_overlap``). An
+    overlapping object is classified a "satellite" of its largest
+    overlapping neighbor if it is either smaller (semi-major axis less
+    than 50% of the neighbor's) or much fainter (neighbor's ``OPTFLUX``
+    more than 10x its own); satellites have Tractor geometry forced on
+    (unless the neighbor they overlap is itself ``FIXGEO``) and radial
+    weighting forced off. If ``use_radial_weight_for_overlaps`` is False,
+    *any* overlap (not just satellite status) disables radial weighting.
+    Finally, a cluster heuristic disables radial weighting for any object
+    (still radially weighted at that point) with 3 or more bright (>10%
+    of its flux) extended neighbors within twice its initial diameter.
 
-    Satellite classification:
-      - A galaxy is a satellite if it overlaps a larger/brighter neighbor AND
-        EITHER its size is < 50% of the neighbor OR its flux is < 10% of the neighbor
+    Notes
+    -----
+    ``SATELLITE_FRAC`` is accepted but not referenced in this function's
+    body -- the satellite size/flux thresholds are hardcoded (0.5 and
+    10.0 respectively). ``SATELLITE_FRAC`` is used for a separate
+    satellite check directly in :func:`build_multiband_mask`'s own body.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table`
+        Group sample table (``OPTFLUX``, ``RA_INIT``, ``DEC_INIT``,
+        ``DIAM_INIT``, ``ELLIPSEMODE`` columns are read).
+    samplesrcs : :class:`list` of :class:`~astropy.table.Table` or None
+        Tractor row matched to each object in ``sample``.
+    opt_pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    use_tractor_position : :class:`bool`
+        Passed through to ``get_geometry`` when computing each object's
+        approximate geometry for overlap testing.
+    use_radial_weight : :class:`bool`
+        Global default radial-weighting preference; the baseline value
+        for ``use_radial_weight_obj`` before overlap/satellite/cluster
+        overrides are applied.
+    use_radial_weight_for_overlaps : :class:`bool`
+        If False, any overlap disables radial weighting regardless of
+        satellite status; if True, only satellites are forced off.
+    SATELLITE_FRAC : :class:`float`
+        Unused (see Notes).
+    get_geometry : callable
+        The nested :func:`build_multiband_mask.get_geometry` closure, used
+        to compute each object's approximate pixel geometry.
+    ellipses_overlap : callable
+        Function testing whether two elliptical apertures overlap (see
+        :mod:`SGA.geometry`).
+    allgalsrcs : :class:`~astropy.table.Table`
+        Extended Tractor sources considered as potential cluster
+        companions.
+    opt_bands : :class:`list` of :class:`str`
+        Optical bands used to look up each candidate companion's flux.
+    tractorgeo : :class:`bool`
+        Global default for ``use_tractor_geometry_obj`` before
+        satellite-driven overrides.
+
+    Returns
+    -------
+    use_radial_weight_obj : :class:`numpy.ndarray`
+        Boolean array, length ``len(sample)``, per-object radial-weighting
+        decision.
+    use_tractor_geometry_obj : :class:`numpy.ndarray`
+        Boolean array, length ``len(sample)``, per-object Tractor-geometry
+        override decision.
+    satellite_obj : :class:`numpy.ndarray`
+        Boolean array, length ``len(sample)``, True where the object was
+        classified a satellite.
+    overlap_obj : :class:`numpy.ndarray`
+        Boolean array, length ``len(sample)``, True where the object
+        overlaps at least one other object in ``sample``.
 
     """
     nsample = len(sample)
@@ -2490,34 +2673,71 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
                                 tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                                 current_bx=None, current_by=None):
-    """Build protected core mask for reference (SGA) sources.
+    """Build a protected core mask for other reference (SGA) sources in the
+    group, so their flux is never fully unmasked even when it falls
+    inside the current galaxy's ellipse.
 
-    For each reference source, creates a compact elliptical core mask that
-    should not be unmasked even when inside the current galaxy's ellipse.
-    This prevents residual flux from other SGA sources from contaminating
-    moment calculations.
+    For each reference source in ``refindx``, computes its geometry (from
+    the previously converged final geometry if already processed in this
+    pass, otherwise from the table or Tractor position/shape) and masks a
+    fixed fractional core (30% of its semi-major axis, with a floor of 10
+    arcsec) around it. This prevents residual flux from a neighboring SGA
+    galaxy from contaminating this object's moment calculation, even in
+    regions where the two objects' ellipses overlap.
 
     Parameters
     ----------
-    iobj : int
-        Index of current galaxy being processed
-    refindx : array
-        Indices of all other reference sources (excludes iobj)
-    sample : Table
-        Sample table with SGA_MASK, etc.
-    samplesrcs : list
-        List of Tractor source objects
-    geo_final : array
-        Final geometry array [bx, by, sma, ba, pa] for completed objects
-    current_bx, current_by : float, optional
-        Current galaxy center for distance-based core sizing.
-        If None, uses fixed core fraction.
+    iobj : :class:`int`
+        Index of the object currently being processed; excluded from
+        ``refindx``.
+    refindx : :class:`numpy.ndarray`
+        Indices of all other reference (SGA) sources in the group.
+    sample : :class:`~astropy.table.Table`
+        Group sample table (``SMA_MASK`` and other geometry columns are
+        read).
+    samplesrcs : :class:`list` of :class:`~astropy.table.Table` or None
+        Tractor row matched to each object in ``sample``.
+    geo_final : :class:`numpy.ndarray`
+        Converged geometry for already-processed objects, shape
+        ``(nsample, 5)`` as ``[bx, by, sma, ba, pa]``; used for indices
+        ``< iobj``.
+    use_tractor_geometry_obj : :class:`numpy.ndarray`
+        Per-object flag (see :func:`_get_radial_weight_and_tractor_geometry`)
+        for whether to read Tractor rather than table geometry for
+        not-yet-processed reference sources.
+    use_tractor_position_obj : :class:`numpy.ndarray`
+        Per-object flag for whether to take the center from the matched
+        Tractor source rather than the table.
+    tractorgeo : :class:`bool`
+        Global override forcing Tractor geometry for all reference
+        sources.
+    get_geometry : callable
+        The nested :func:`build_multiband_mask.get_geometry` closure.
+    opt_pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    SMA_MASK_MIN_PIX : :class:`float`
+        Minimum semi-major axis, in pixels, used as a floor when reading
+        a completed object's stored geometry.
+    in_ellipse_mask : callable
+        Function building a boolean elliptical-aperture mask (see
+        :mod:`SGA.geometry`).
+    width : :class:`int`
+        Mosaic width in pixels.
+    xgrid, ygrid_flip : :class:`numpy.ndarray`
+        Pixel coordinate grids passed through to ``in_ellipse_mask``.
+    sz : :class:`tuple`
+        Mosaic shape, ``(ny, nx)``, used to size the returned mask.
+    current_bx, current_by : :class:`float`, optional
+        Unused in the current implementation (distance-based core sizing
+        is disabled; core size is fixed at 30% of each reference source's
+        semi-major axis regardless of separation from the current
+        object).
 
     Returns
     -------
-    core_mask : ndarray (bool)
-        2D mask with protected cores for all reference sources other
-        than the current galaxy.
+    core_mask : :class:`numpy.ndarray`
+        Boolean array, shape ``sz``, the union of all reference sources'
+        protected core masks.
 
     """
     core_mask = np.zeros(sz, bool)
@@ -2594,25 +2814,35 @@ def _prerender_one(args):
 
 
 def prerender_patches(cat, wcs, bands, psfs, mp=1):
-    """Pre-render Tractor model patches for a list of sources, per band.
+    """Pre-render Tractor model patches for a list of sources, per band, so
+    repeated calls to ``make_sourcemask``/``update_galmask`` can reuse
+    them instead of re-rendering from scratch.
 
     Parameters
     ----------
-    srcs : list
-        List of Tractor source objects (e.g., allgalsrcs).
+    cat : :class:`~astropy.table.Table` or :class:`list`
+        Sources to render. If an ``astrometry.util.fits.tabledata``
+        instance, sources are read out per band via
+        ``legacypipe.catalog.read_fits_catalog``; otherwise treated
+        directly as a list of Tractor source objects.
     wcs : WCS
-        WCS object for the mosaic.
-    bands : list of str
-        Optical bands to render.
-    psfs : dict
-        Dict of pixelized PSFs keyed by band name.
-    mp : int
-        Number of multiprocessing workers.
+        WCS of the mosaic to render into (a
+        ``tractor.wcs.ConstantFitsWcs``, ``legacypipe.survey.LegacySurveyWcs``,
+        or plain WCS object).
+    bands : :class:`list` of :class:`str`
+        Bands to render each source in.
+    psfs : :class:`dict`
+        Mapping of band name to pixelized PSF used for rendering.
+    mp : :class:`int`
+        Number of multiprocessing workers; if > 1, sources are rendered in
+        parallel via ``_prerender_one``.
 
     Returns
     -------
-    dict
-        {filt: [Patch|None, ...]} row-matched to srcs.
+    :class:`dict`
+        Mapping of band name to a list of rendered
+        ``tractor.patch.Patch`` objects (or None for sources with no
+        flux), row-matched to the per-band source list.
 
     """
     import multiprocessing
@@ -2656,15 +2886,164 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          use_tractor_position=True, use_radial_weight=True, fixgeo=False,
                          tractorgeo=False, use_radial_weight_for_overlaps=True,
                          ignore_galaxy_sources=False, mp=1, cleanup=True, htmlgalaxydir=None):
-    """Wrapper to mask out all sources except the galaxy we want to
-    ellipse-fit.
+    """Mask out all sources except the target galaxy in each of a group's
+    optical, unWISE, and GALEX mosaics, in preparation for ellipse-fitting.
 
-    FMAJOR - major if >= XX% of SGA source flux
-    moment_method - 'rms' or 'percentile'
+    For every object in ``sample`` this (1) iteratively refines the
+    elliptical geometry (center, semi-major axis, b/a, PA) from
+    light-weighted image moments, alternating with rebuilding the mask used
+    to compute those moments; (2) builds a final per-object mask combining
+    the per-band data-quality mask, a Gaia bright-star mask, masks of all
+    *other* SGA sources in the group, and masks of major/minor neighboring
+    Tractor galaxies; and (3) subtracts Tractor models for every source
+    that is masked out, so the returned images contain only the flux of
+    the target galaxy. The same reference/galaxy/bright-star masking is
+    then propagated to the unWISE and GALEX mosaics. Per-object results are
+    stacked along a leading nsample axis. Geometry updates, mask bits, and
+    QA flags are written back onto ``sample`` in place; iteration behavior
+    and masking strictness are further controlled per object via the
+    ELLIPSEMODE/ELLIPSEBIT bits already set on ``sample`` (``FIXGEO``,
+    ``TRACTORGEO``, ``NORADWEIGHT``, ``LESSMASKING``, ``MOREMASKING``,
+    ``MOMENTPOS``).
 
-    SATELLITE_FRAC - If an SGA source is smaller than SATELLITE_FRAC
-    of an overlapping neighbour, treat it as a "satellite" and
-    *disable* radial weighting for its moments.
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata for the group mosaic, as produced
+        by :func:`read_multiband`. Keyed both by band name (e.g.
+        ``data['r']``, ``data['r_psf']``, ``data['r_mask']``,
+        ``data['r_invvar']``, ``data['r_skysigma']``) and by fixed keys
+        describing each imaging set: ``'all_data_bands'``, ``'opt_bands'``,
+        ``'opt_refband'``, ``'opt_pixscale'``, ``'opt_wcs'``,
+        ``'REFIDCOLUMN'``, ``'brightstarmask'``, ``'brightstarmask_core'``,
+        and the analogous ``'unwise_bands'``/``'unwise_refband'``/
+        ``'unwise_wcs'``/``'unwise_pixscale'`` and ``'galex_*'`` entries.
+        Updated in place (and returned) with the final masked images,
+        models, mask bits, and per-pixel sigma for each of the ``opt``,
+        ``unwise``, and ``galex`` imaging sets.
+    tractor : :class:`~astropy.table.Table` or None
+        Full Tractor catalog for the mosaic footprint (all detected
+        sources, not just the SGA sample members); used to build the
+        bright-star mask (PSF sources) and major/minor neighboring-galaxy
+        masks (extended sources). None if Tractor photometry was skipped,
+        in which case no source subtraction or neighbor masking is done.
+    sample : :class:`~astropy.table.Table`
+        One row per SGA galaxy in this group, already sorted (by
+        :func:`read_multiband`) by optical flux or initial diameter.
+        Modified in place with the final derived geometry (``RA``, ``DEC``,
+        ``SGANAME``, ``BX``, ``BY``, ``SMA_MOMENT``, ``SMA_MASK``,
+        ``BA_MOMENT``, ``PA_MOMENT``) and ``ELLIPSEBIT`` flags (e.g.
+        ``OVERLAP``, ``SATELLITE``, ``BLENDED``, ``MAJORGAL``, ``FAILGEO``,
+        ``LARGESHIFT``).
+    samplesrcs : :class:`list` of :class:`~astropy.table.Table` or None
+        Tractor row matched to each object in ``sample`` (aligned
+        index-for-index with ``sample``), or None where Tractor dropped or
+        never matched that source.
+    niter_geometry : :class:`int`
+        Number of moment-based geometry-refinement iterations per object.
+        Each iteration rebuilds the elliptical mask from the previous
+        iteration's geometry before re-measuring image moments. Reduced to
+        a single iteration when ``FIXGEO``/``TRACTORGEO`` apply.
+    FMAJOR_geo : :class:`float`
+        Minimum flux fraction, relative to the SGA source, above which a
+        neighboring extended Tractor source is classified "major" (and
+        fully masked, including inside the object's own ellipse) during
+        the geometry-refinement pass.
+    FMAJOR_final : :class:`float`, optional
+        Same threshold as ``FMAJOR_geo``, applied when building the final
+        mask after geometry has converged. Defaults to ``FMAJOR_geo``.
+    ref_factor : :class:`float`
+        Multiplicative factor applied to another SGA source's semi-major
+        axis when building its protective "reference" mask, i.e. how far
+        beyond its own ellipse a neighboring primary target's flux is kept
+        unmasked.
+    moment_method : :class:`str`
+        Method passed to :meth:`~SGA.geometry.EllipseProperties.fit` for
+        the light-weighted moment calculation; either ``'rms'`` or
+        ``'percentile'``.
+    maxshift_arcsec : :class:`float`
+        Maximum allowed shift, in arcsec, between the initial/Tractor
+        position and the moment-refined center. Larger shifts are logged
+        and flagged with ``ELLIPSEBIT['LARGESHIFT']`` /
+        ``ELLIPSEBIT['LARGESHIFT_TRACTOR']``; centers that converge to
+        within this separation of each other are both reverted to their
+        table-based positions.
+    radial_power : :class:`float`
+        Exponent of the radial weighting applied during moment fitting
+        when radial weighting is enabled (down-weights pixels far from the
+        current center).
+    SATELLITE_FRAC : :class:`float`
+        If an SGA source's semi-major axis is smaller than
+        ``SATELLITE_FRAC`` times that of the largest overlapping neighbor,
+        it is flagged ``ELLIPSEBIT['SATELLITE']`` and, upstream, radial
+        weighting is disabled for its moment fit.
+    mask_minor_galaxies : :class:`bool`
+        If True, also mask "minor" (below the ``FMAJOR`` threshold)
+        neighboring galaxies, but only outside the current object's own
+        ellipse; major companions are always masked regardless of this
+        flag.
+    input_geo_initial : :class:`numpy.ndarray`, optional
+        Precomputed starting geometry per object, shape ``(nsample, 5)``
+        as ``[bx, by, sma, ba, pa]`` in pixels/degrees. When given, the
+        geometry-refinement loop runs a single pass (rebuilding masks and
+        recomputing ``SMA_MOMENT`` only) instead of iterating from the
+        table/Tractor-based starting geometry, and the nearby-object mask
+        (``mask_nearby``) is not applied. Used for a second, frozen-geometry
+        pass over previously converged objects.
+    qaplot : :class:`bool`
+        If True, call :func:`qa_multiband_mask` to generate a QA figure.
+    mask_nearby : :class:`list` of :class:`dict`, optional
+        Extra ellipses to always mask (except within the current object's
+        own ellipse), e.g. bright non-SGA foreground galaxies identified
+        during visual inspection. Each dict has keys ``'RA'``, ``'DEC'``,
+        ``'DIAM'``, ``'BA'``, ``'PA'``.
+    use_tractor_position : :class:`bool`
+        Global default for holding an object's center fixed at its Tractor
+        position rather than re-measuring it from image moments;
+        overridden per object by the ELLIPSEMODE bits and overlap logic.
+    use_radial_weight : :class:`bool`
+        Global default for applying radial weighting in the moment
+        calculation; overridden per object by ELLIPSEMODE bits and
+        satellite/overlap logic.
+    fixgeo : :class:`bool`
+        If True, force every object's geometry to its initial
+        (table/Tractor) value -- no iteration, no moment refinement.
+        Equivalent to setting ``ELLIPSEMODE['FIXGEO']`` on all objects.
+    tractorgeo : :class:`bool`
+        If True, force every object's geometry to its Tractor ellipse
+        (``shape_r``, ``shape_e1``, ``shape_e2``), overriding moment-based
+        geometry entirely. Equivalent to setting
+        ``ELLIPSEMODE['TRACTORGEO']`` on all objects.
+    use_radial_weight_for_overlaps : :class:`bool`
+        Whether objects flagged as overlapping/satellites should still
+        receive radial weighting in their moment fit (passed through to
+        the per-object mode resolution).
+    ignore_galaxy_sources : :class:`bool`
+        If True, drop all extended Tractor sources from consideration --
+        disables major/minor-galaxy masking entirely. For debugging/QA.
+    mp : :class:`int`
+        Number of multiprocessing workers used to pre-render neighboring
+        galaxy model patches (see :func:`prerender_patches`).
+    cleanup : :class:`bool`
+        If True, delete the large intermediate per-band arrays (raw
+        images, PSFs, masks, sky sigmas) from ``data`` before returning,
+        keeping only the final masked/subtracted products.
+    htmlgalaxydir : :class:`str`, optional
+        Output directory for the QA figure when ``qaplot=True``.
+
+    Returns
+    -------
+    data : :class:`dict`
+        The input dictionary, updated in place. For each of ``'opt'``,
+        ``'unwise'``, ``'galex'`` it now contains ``f'{prefix}_images'``
+        (shape ``(nsample, nband, ny, nx)``, surface brightness with all
+        non-target flux subtracted), ``f'{prefix}_maskbits'`` (per-object
+        mask-bit arrays), ``f'{prefix}_models'`` (subtracted source
+        models), and ``f'{prefix}_sigma'`` (per-pixel uncertainty). Raw
+        per-band inputs are removed if ``cleanup=True``.
+    sample : :class:`~astropy.table.Table`
+        The input table, updated in place with final positions, geometry,
+        and ``ELLIPSEBIT`` flags, returned for convenience.
 
     """
     from SGA.geometry import in_ellipse_mask, ellipses_overlap
@@ -2673,9 +3052,42 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def make_sourcemask(srcs, wcs, band, psf, sigma=None, stars=False, patches=None):
-        """Build a model image and threshold mask from a table of
-        Tractor sources; also optionally subtract that model from an
-        input image.
+        """Render a Tractor model image for a set of sources and,
+        optionally, threshold it into a boolean mask.
+
+        Parameters
+        ----------
+        srcs : :class:`~astropy.table.Table`
+            Tractor sources to render (e.g. all point sources, or a subset
+            of extended galaxies).
+        wcs : :class:`~astrometry.util.util.Tan`
+            WCS of the mosaic to render into.
+        band : :class:`str`
+            Filter name (lower-cased internally) used to select flux and
+            look up the model image.
+        psf : :class:`~tractor.psf.PixelizedPSF`
+            Pixelized PSF used to render point sources.
+        sigma : :class:`float`, optional
+            Sky sigma used as the detection threshold. If None, no
+            threshold mask is built (only the model image is returned; the
+            returned mask is all False) -- used when the caller only needs
+            the model for subtraction, not a mask.
+        stars : :class:`bool`
+            If True, ``srcs`` are point sources and a looser 1-sigma
+            threshold is used instead of the 1.5-sigma threshold applied
+            to extended sources.
+        patches : :class:`list`, optional
+            Pre-rendered per-source model patches (see
+            :func:`prerender_patches`) to speed up rendering.
+
+        Returns
+        -------
+        mask : :class:`numpy.ndarray`
+            Boolean array, shape of the mosaic, True where the rendered
+            model exceeds ``nsigma * sigma`` (binary-dilated by 2
+            iterations); all False if ``sigma`` is None.
+        model : :class:`numpy.ndarray`
+            Float array, shape of the mosaic, the rendered model image.
 
         """
         from legacypipe.bits import MASKBITS
@@ -2704,8 +3116,60 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                               wmask=None, use_tractor_position=False,
                               use_radial_weight=True, input_ba_pa=None,
                               debug=False):
-        """Measure the light-weighted center and elliptical geometry
-        of the object of interest.
+        """Measure the light-weighted center and elliptical geometry of the
+        object of interest within a cutout of the full mosaic.
+
+        Extracts a ``factor * sma``-sized cutout centered near ``(bx, by)``
+        and fits :class:`~SGA.geometry.EllipseProperties` to it. Falls back
+        to the input geometry (with a warning) if the fit returns a
+        non-positive semi-major axis.
+
+        Parameters
+        ----------
+        img : :class:`numpy.ndarray`
+            Full-mosaic detection image (inverse-variance-weighted stack)
+            to extract the cutout from.
+        bx, by : :class:`float`
+            Approximate center of the object, in full-mosaic pixel
+            coordinates, used to place the cutout.
+        sma : :class:`float`
+            Approximate semi-major axis, in pixels, used to size the
+            cutout (``factor * sma`` on a side) and as the fallback value
+            if the fit fails.
+        ba, pa : :class:`float`
+            Fallback axis ratio and position angle (degrees) used if the
+            fit fails.
+        fraction : :class:`float`
+            Unused in the current implementation.
+        factor : :class:`float`
+            Cutout half-width in units of ``sma``.
+        radial_power : :class:`float`
+            Exponent of the radial weighting used by the fit when
+            ``use_radial_weight`` is True.
+        moment_method : :class:`str`
+            Moment-fitting method, ``'rms'`` or ``'percentile'``.
+        wmask : :class:`numpy.ndarray`, optional
+            Full-mosaic boolean pixel mask (True=usable) to restrict the
+            fit to unmasked pixels; if None, all cutout pixels are used.
+        use_tractor_position : :class:`bool`
+            If True, hold the fit center fixed at ``(bx, by)`` instead of
+            solving for it.
+        use_radial_weight : :class:`bool`
+            If True, apply radial weighting (``radial_power``) in the
+            moment calculation.
+        input_ba_pa : :class:`tuple`, optional
+            ``(ba, pa)`` to hold fixed during the fit instead of solving
+            for the axis ratio and position angle.
+        debug : :class:`bool`
+            If True, save a diagnostic figure of the cutout, mask, and
+            fitted ellipse to ``ioannis/tmp/junk.png``.
+
+        Returns
+        -------
+        :class:`~SGA.geometry.EllipseProperties`
+            Fitted ellipse properties with ``x0``, ``y0`` (center), ``a``
+            (semi-major axis, pixels), ``ba``, and ``pa`` translated back
+            into full-mosaic pixel coordinates.
 
         """
         from SGA.geometry import EllipseProperties
@@ -2776,10 +3240,51 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                      moment_method='rms', ref_tractor=None,
                      use_sma_mask=False, use_tractor_position=False,
                      props=None):
-        """Extract elliptical geometry from either an astropy Table
-        (sample), a tractor catalog, or an ellipse_properties object.
+        """Extract elliptical geometry from a sample table row, a Tractor
+        source, or a fitted :class:`~SGA.geometry.EllipseProperties` object.
 
-        Returns np.array([bx, by, sma, ba, pa]) in *pixel* units.
+        Exactly one of ``table``, ``tractor``, or ``props`` should be
+        given; they are checked in that order of priority. For ``table``,
+        the moment-derived geometry (``*_MOMENT`` columns) is preferred
+        once available, falling back to the ``*_INIT`` columns; for
+        ``props``, the RMS-method semi-major axis is scaled by 1.75 to
+        approximate the percentile-equivalent aperture.
+
+        Parameters
+        ----------
+        pixscale : :class:`float`
+            Pixel scale in arcsec/pixel, used to convert table-based
+            angular sizes (arcsec) to pixels.
+        pixfactor : :class:`float`
+            Multiplicative factor applied to the returned ``bx``, ``by``
+            (e.g. to rescale between mosaics of different pixel scale).
+        table : :class:`~astropy.table.Table` row, optional
+            Sample row to read geometry from (columns ``BX``, ``BY``,
+            ``BX_INIT``, ``BY_INIT``, ``SMA_MOMENT``, ``SMA_MASK``,
+            ``SMA_INIT``, ``BA_MOMENT``/``BA_INIT``, ``PA_MOMENT``/``PA_INIT``).
+        tractor : :class:`~astropy.table.Table` row, optional
+            Tractor source to read geometry from (``bx``, ``by``,
+            ``shape_r``, ``shape_e1``, ``shape_e2``).
+        moment_method : :class:`str`
+            Moment method used to produce ``props`` (``'rms'`` or
+            ``'percentile'``); controls the RMS-to-percentile SMA scaling
+            when ``props`` is given.
+        ref_tractor : :class:`~astropy.table.Table` row, optional
+            Tractor source to take the center from instead of the table
+            or fitted center, when ``use_tractor_position=True``.
+        use_sma_mask : :class:`bool`
+            When reading from ``table``, prefer ``SMA_MASK`` over
+            ``SMA_MOMENT``/``SMA_INIT`` for the semi-major axis.
+        use_tractor_position : :class:`bool`
+            When reading from ``table`` or ``props``, take ``(bx, by)``
+            from ``ref_tractor`` instead of the table/fit center.
+        props : :class:`~SGA.geometry.EllipseProperties`, optional
+            Fitted ellipse properties to read geometry from.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            ``[bx, by, sma, ba, pa]`` in pixel units (angle in degrees).
 
         """
         def _table_geometry(table):
@@ -2858,7 +3363,53 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     def update_galmask(allgalsrcs, bx, by, sma, ba, pa, opt_skysigmas=None,
                        opt_models=None, mask_allgals=False, subset_mask=None,
                        allgal_patches=None):
-        """Update the galaxy mask based on the current in-ellipse array.
+        """Build (or extend) a per-optical-band mask for a set of
+        neighboring extended sources, optionally accumulating their
+        subtracted models.
+
+        Sources whose Tractor center falls inside the current object's
+        ``[bx, by, sma, ba, pa]`` ellipse are excluded from masking, so
+        the target's own flux is never masked out -- unless
+        ``mask_allgals=True``, in which case every source in
+        ``allgalsrcs`` is masked regardless of position.
+
+        Parameters
+        ----------
+        allgalsrcs : :class:`~astropy.table.Table`
+            Extended Tractor sources to consider (e.g. the full
+            neighbor list, or a major/minor flux-selected subset).
+        bx, by, sma, ba, pa : :class:`float`
+            Current object's elliptical geometry, in pixels/degrees.
+        opt_skysigmas : :class:`dict`, optional
+            Mapping of band -> sky sigma, used as the detection threshold
+            in ``make_sourcemask``.
+        opt_models : :class:`numpy.ndarray`, optional
+            Running per-band model image, shape ``(nband, ny, nx)``.
+            Updated in place (and returned) by adding the rendered model
+            of each newly masked source.
+        mask_allgals : :class:`bool`
+            If True, mask every source in ``allgalsrcs`` irrespective of
+            whether it lies inside the current ellipse. If False, only
+            sources outside the ellipse are masked.
+        subset_mask : :class:`numpy.ndarray`, optional
+            Indices into the full source list that ``allgalsrcs``
+            corresponds to, needed to index into ``allgal_patches`` when
+            ``allgalsrcs`` is a boolean-selected subset of the full list.
+        allgal_patches : :class:`dict`, optional
+            Mapping of band -> pre-rendered per-source model patches (see
+            :func:`prerender_patches`), used to speed up rendering.
+
+        Returns
+        -------
+        galsrcs : :class:`~astropy.table.Table` or None
+            The subset of ``allgalsrcs`` actually masked (i.e. outside the
+            ellipse, or all of them if ``mask_allgals``), or None if empty.
+        opt_galmask : :class:`numpy.ndarray`
+            Boolean mask, shape of the mosaic, unioned across all optical
+            bands.
+        opt_models : :class:`numpy.ndarray` or None
+            Same array as the input ``opt_models``, updated in place and
+            returned for convenience.
 
         """
         sigma = None
@@ -2915,7 +3466,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def _mask_edges(mask, frac=0.05):
-        # Mask a XX% border.
+        """Mask a border strip around all four edges of a boolean array,
+        in place.
+
+        Parameters
+        ----------
+        mask : :class:`numpy.ndarray`
+            Boolean array, modified in place.
+        frac : :class:`float`
+            Fraction of the array width used as the border width on each
+            of the four edges.
+
+        Returns
+        -------
+        None
+
+        """
         sz = mask.shape
         edge = int(frac*sz[0])
         mask[:edge, :] = True
