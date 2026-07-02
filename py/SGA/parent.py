@@ -29,7 +29,33 @@ ARCSEC_PER_DEG = 3600.0
 
 
 def parent_datamodel(nobj):
-    """Initialize the data model for the parent-nocuts sample.
+    """Build an empty parent-catalog data model table.
+
+    Allocates one row per object with placeholder/missing-value
+    defaults (``-99``/``-99.``/empty string as appropriate) for every
+    column the parent-sample-building pipeline populates: per-source
+    identifiers (``OBJNAME``, and per-origin-catalog variants
+    ``OBJNAME_NED``, ``OBJNAME_HYPERLEDA``, ``OBJNAME_NEDLVS``,
+    ``OBJNAME_SGA2020``, ``OBJNAME_LVD``, ``OBJNAME_DR910``),
+    classification (``OBJTYPE``, ``MORPH``, ``BASIC_MORPH``),
+    coordinates and redshift (overall and per-origin-catalog), ``PGC``,
+    a free-text ``ESSENTIAL_NOTE``, literature/HyperLeda/SGA2020
+    photometry and geometry (``MAG``/``DIAM``/``BA``/``PA`` plus
+    ``_REF`` provenance columns), and per-origin-catalog row indices
+    (``ROW_HYPERLEDA``, ``ROW_NEDLVS``, ``ROW_SGA2020``, ``ROW_LVD``,
+    ``ROW_CUSTOM``, ``ROW_DR910``) used to cross-reference back to each
+    external catalog.
+
+    Parameters
+    ----------
+    nobj : :class:`int`
+        Number of rows to allocate.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Empty parent-sample table with ``nobj`` rows, all columns at
+        their missing-value defaults.
 
     """
     parent = Table()
@@ -101,6 +127,34 @@ def parent_datamodel(nobj):
 
 
 def check_lvd(cat, lvdcat=None):
+    """Check that every LVD source is present in a parent catalog (or a
+    given subset of it), by ``ROW`` / ``ROW_LVD``.
+
+    Notes
+    -----
+    The internal ``assert`` is wrapped in a bare ``except:``, so *any*
+    exception (not just the expected ``AssertionError``, e.g. a
+    ``KeyError`` from a missing column) is silently treated as "some
+    LVD systems are missing" and triggers the same log message and
+    ``lvdmiss`` computation.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Parent catalog (or subset) to check; needs ``ROW_LVD`` unless
+        ``lvdcat`` is given directly.
+    lvdcat : :class:`~astropy.table.Table`, optional
+        Pre-filtered subset of ``cat`` restricted to LVD-sourced rows
+        (``ROW_LVD != -99``). If None, computed from ``cat`` directly.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table` or None
+        The LVD catalog rows (from :func:`SGA.external.read_lvd`) that
+        are *not* represented in ``lvdcat``/``cat``, or None if every
+        LVD source is accounted for.
+
+    """
     from SGA.external import read_lvd
     lvd = read_lvd(verbose=False)
     if lvdcat is None:
@@ -115,7 +169,33 @@ def check_lvd(cat, lvdcat=None):
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
-    """QA of the parent sample.
+    """Build QA figures for the parent sample: an on-sky scatter plot
+    and/or a size-magnitude diagram.
+
+    Reads the parent catalog (nocuts or fully-cut version, per
+    ``nocuts``) and, depending on which flags are set, writes a sky-plot
+    PNG (:func:`SGA.qa.fig_sky`) and/or a size-vs-magnitude diagram PNG
+    (:func:`SGA.qa.fig_size_mag`) to ``{sga_dir()}/parent/qa/``.
+
+    Notes
+    -----
+    Contains a large ``if False:`` block (a HyperLeda-vs-archive
+    diameter comparison corner plot) that is permanently disabled dead
+    code, left in place rather than removed.
+
+    Parameters
+    ----------
+    nocuts : :class:`bool`
+        If True, use the "nocuts" (pre-selection) parent catalog
+        version instead of the final parent catalog.
+    sky : :class:`bool`
+        If True, build the on-sky scatter plot.
+    size_mag : :class:`bool`
+        If True, build the size-magnitude diagram.
+
+    Returns
+    -------
+    None
 
     """
     from SGA.qa import fig_sky, fig_size_mag
@@ -188,9 +268,31 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
 
 def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
-    """Build some simple QA of the in-footprint sample.
+    """Build an on-sky scatter-plot QA figure of the in-footprint
+    archive sample for one region, colored by available filter set.
 
-    TODO - make this a sky map
+    Reads the per-region archive parent catalog and plots each object's
+    (RA, Dec), colored/labeled by its ``FILTERS`` value (e.g. ``'griz'``
+    vs. partial band coverage), optionally underlaid with the full
+    (all-region) catalog and/or all quality-cut CCD centers for the
+    region, for visual footprint/coverage inspection. Written to
+    ``{sga_dir()}/parent/qa/qa-parent-archive-{region}-{version}.png``.
+
+    Parameters
+    ----------
+    region : :class:`str`
+        Survey region (e.g. ``'dr9-north'``); also selects the Dec/legend
+        placement convention used for the plot limits.
+    show_fullcat : :class:`bool`
+        If True, underlay all regions' objects (gray) for context.
+    show_fullccds : :class:`bool`
+        If True, underlay all quality-cut (``ccd_cuts == 0``) CCD centers
+        for this region's survey run (gray), via a live legacypipe survey
+        query.
+
+    Returns
+    -------
+    None
 
     """
     from collections import Counter
@@ -259,9 +361,49 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
 
 def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, objname=None,
                    VETO=None, reverse=False, verbose=False):
-    """Drop sources according to their name prefix. Most/all of these have
-    been visually inspected. However, don't drop a source if it has PGC
-    number and at least one diameter.
+    """Find row indices matching a given object-name prefix, optionally
+    protecting sources that have a real PGC number and diameter (or
+    just a diameter) from being dropped, and optionally exempting a
+    veto list of specific names.
+
+    Most/all of the objects targeted by this selection have been
+    visually inspected (per upstream VI passes); this function
+    reproduces the resulting index list rather than re-deriving it from
+    scratch.
+
+    Parameters
+    ----------
+    drop_prefix : :class:`str`
+        Object-name prefix to match (exact match against each element
+        of ``allprefixes``, not a substring/startswith test).
+    allprefixes : :class:`numpy.ndarray` of :class:`str`
+        Precomputed first whitespace-delimited token of each object's
+        name (see :func:`remove_by_prefix`).
+    pgc : :class:`numpy.ndarray`, optional
+        PGC numbers; if given together with ``diam``, objects with both
+        a real PGC (``!= -99``) *and* a real diameter (``!= -99.``) are
+        excluded from the match (protected from dropping).
+    diam : :class:`numpy.ndarray`, optional
+        Diameters; if given without ``pgc``, objects with a real
+        diameter alone are protected from dropping.
+    objname : :class:`numpy.ndarray` of :class:`str`, optional
+        Object names, required (together with ``VETO``) to apply the
+        veto exclusion.
+    VETO : :class:`list` of :class:`str`, optional
+        Object names to always exclude from the match (protected),
+        regardless of prefix/diameter/PGC.
+    reverse : :class:`bool`
+        If True, return the complement -- indices *not* matching
+        ``drop_prefix`` (after the same protections) -- instead of the
+        matching indices.
+    verbose : :class:`bool`
+        If True, log how many objects were matched/kept.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Row indices into ``allprefixes`` matching (or, if ``reverse``,
+        not matching) ``drop_prefix``, after protections.
 
     """
     I = drop_prefix == allprefixes
@@ -290,8 +432,62 @@ def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, objname=None,
 
 def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build_qa=False,
                      cleanup=True, verbose=False, overwrite=False):
-    """Remove merger_types based on their name "prefix" (or reference), most of
-    which are ultra-faint or galaxy groups (i.e., not galaxies).
+    """Remove non-galaxy contaminants (galaxy groups, clusters, faint
+    ultra-faint systems, spurious cross-IDs, etc.) from the parent
+    catalog, selected by object-name prefix or embedded reference tag,
+    via large hand-curated exclusion lists.
+
+    If ``merger_type`` is given (e.g. ``'GTrpl'``, ``'GPair'``),
+    restricts to objects of that ``OBJTYPE`` and further splits by
+    whether they have an estimated diameter (``merger_has_diameter``);
+    otherwise operates on the whole catalog. Selects one of three
+    hardcoded exclusion-list sets via ``match merger_type: case ...``
+    (each a hand-curated list of object-name prefixes -- built up over
+    many VI passes -- representing known non-galaxy catalog types:
+    literature cluster/group catalogs, X-ray/radio source catalogs,
+    deep-field source lists, photographic-plate catalogs, etc.):
+    ``drop_prefixes`` (dropped only if the object has no diameter),
+    ``drop_ignore_diam_prefixes`` (dropped regardless of diameter), and
+    ``drop_references`` (dropped if the *reference tag* embedded in the
+    object name, e.g. ``':[XYZ2020]'``, contains this string, via
+    substring search) -- plus a per-``merger_type`` ``VETO`` list of
+    specific object names always protected from removal. Optionally
+    builds per-prefix multi-page VI PDF figures
+    (:func:`SGA.qa.multipage_skypatch`) for every prefix that was
+    *not* dropped, as a sanity-check that nothing else should be added
+    to the exclusion lists.
+
+    Parameters
+    ----------
+    fullcat : :class:`~astropy.table.Table`
+        Parent catalog to filter; needs ``OBJNAME``, ``OBJTYPE``,
+        ``DIAM_LIT``, ``DIAM_HYPERLEDA``, ``ROW_PARENT``.
+    merger_type : :class:`str`, optional
+        Restrict to this ``OBJTYPE`` (e.g. ``'GTrpl'``, ``'GPair'``); if
+        None, use the generic (non-merger) exclusion list on the whole
+        catalog.
+    merger_has_diameter : :class:`bool`
+        If True (only meaningful with ``merger_type`` set), restrict to
+        objects *with* an estimated diameter and use the
+        diameter-having exclusion sublist; if False, restrict to
+        objects *without* one.
+    build_qa : :class:`bool`
+        If True, build per-prefix VI PDF figures for every
+        not-dropped prefix.
+    cleanup : :class:`bool`
+        Passed to :func:`SGA.qa.multipage_skypatch` (QA intermediate
+        file cleanup).
+    verbose : :class:`bool`
+        If True, log the total number removed.
+    overwrite : :class:`bool`
+        Passed to :func:`SGA.qa.multipage_skypatch` (overwrite existing
+        QA files).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``fullcat`` with the selected contaminants removed (rows
+        matching by ``ROW_PARENT``).
 
     """
     if merger_type is not None:
@@ -510,7 +706,86 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
 
 def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                            rebuild_file=False, build_qa=False):
-    """Identify cross-identification errors.
+    """Detect and correct NED cross-identification errors where
+    HyperLeda-derived properties (PGC number, diameter, coordinates)
+    were associated with a multi-galaxy *system* (``GPair``/``GTrpl``)
+    entry in NED rather than the correct individual-galaxy entry, then
+    apply a curated set of manual VI corrections.
+
+    If ``rebuild_file=True``, regenerates
+    ``SGA/data/SGA2025/SGA2025-crossid-errors.csv`` from scratch: for
+    each ``GPair``/``GTrpl`` system, builds KD-trees and searches for
+    another catalog entry within 1.5 arcsec of the system's *HyperLeda*
+    coordinates (a strong indication that entry is the "real" target of
+    the HyperLeda cross-match), chained up to two levels deep
+    (primary -> secondary -> tertiary match) to catch multi-hop
+    mis-associations; when more than one candidate match exists, uses
+    :func:`SGA.sky.choose_primary` to pick which one to associate.
+    Writes ``objname_from,pgc_from,objname_to,pgc_to,dtheta_arcsec,comment``
+    rows to the CSV.
+
+    Always (regardless of ``rebuild_file``): reads the cross-ID CSV and,
+    for each row, copies HyperLeda-derived columns (name, coordinates,
+    diameter/BA/PA, PGC) from the "from" (system) object to the "to"
+    (individual galaxy) object where the latter is missing them (see
+    Notes for a bug in this copy condition), then drops the "from"
+    system rows entirely. Also applies a second curated action file
+    (``SGA2025-vi-actions.csv``) with two supported actions: ``'drop'``
+    (remove named objects outright) and ``'hyperleda-coords'`` (replace
+    NED coordinates with HyperLeda coordinates for named objects).
+    Finally, re-runs :func:`SGA.sky.resolve_close` on the neighborhood
+    of every corrected/dropped object (75 arcsec search radius) to
+    clean up any newly-created close/duplicate pairs, and optionally
+    builds paginated VI PDF figures of everything dropped
+    (:func:`SGA.qa.multipage_skypatch`).
+
+    Notes
+    -----
+    The per-column copy condition
+    ``if (new != '' or new != -99) and (old == '' or old == -99):`` has
+    a logic bug: ``new != '' or new != -99`` is a tautology -- always
+    True for any value of ``new``, since a value cannot simultaneously
+    equal both ``''`` and ``-99``. The condition therefore reduces to
+    just ``old == '' or old == -99`` in practice, i.e. it copies
+    whenever the destination is empty, without actually checking that
+    the source (``new``) has a real value to copy. The evident intent
+    (copy only when the source has a value AND the destination doesn't)
+    is not what's implemented.
+
+    Parameters
+    ----------
+    fullcat : :class:`~astropy.table.Table`
+        Parent catalog to correct; needs ``OBJNAME``, ``OBJTYPE``,
+        ``RA``/``DEC`` and their ``_HYPERLEDA`` counterparts, ``PGC``,
+        ``DIAM_LIT``/``BA_LIT``/``PA_LIT``, ``DIAM_HYPERLEDA``, ``Z``,
+        ``ROW_PARENT``, ``ROW_HYPERLEDA``.
+    verbose : :class:`bool`
+        If True, log every correction/drop/keep decision in detail.
+    cleanup : :class:`bool`
+        Passed to :func:`SGA.qa.multipage_skypatch` (QA intermediate
+        file cleanup).
+    rebuild_file : :class:`bool`
+        If True, regenerate the cross-ID error CSV from scratch (an
+        expensive, one-time operation) instead of reading the existing
+        curated file.
+    build_qa : :class:`bool`
+        If True, build paginated VI PDF figures of every dropped
+        cross-ID-error system.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Corrected catalog, with cross-ID-error "system" rows dropped,
+        properties copied to the correct individual-galaxy rows, VI
+        actions applied, and close/duplicate pairs re-resolved.
+
+    Raises
+    ------
+    ValueError
+        If any cross-ID CSV or VI-actions CSV entry references an
+        object name not found in ``fullcat``, if the VI-actions file has
+        duplicate object names for the same action, or if an
+        unrecognized action type is encountered.
 
     """
     from astrometry.libkd.spherematch import tree_build_radec, trees_match
@@ -810,24 +1085,91 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
 
 
 def update_lvd_properties(cat):
-    """Gather geometry for all LVD sources.
+    """Assemble the best available geometry (diameter, axis ratio,
+    position angle) for every LVD (Local Volume Database) source,
+    combining the LVD catalog itself, the separate LVGDB (Local Volume
+    Galaxies Database) table, VI-derived BA/PA from other catalogs
+    already in ``cat``, and a final hand-curated override file.
 
-       name            ra            dec      rhalf
-      str22         float64        float64   float64
-    ---------- ------------------ ---------- -------
-     dw1341-29 205.33416666666665   -29.5675      --
-         IC239             39.116     38.969      --
-      NGC 1042          2.6733275  -8.433591      --
-      NGC 4151         12.1757335 39.4057938      --
-      NGC 4424         12.4532467  9.4204423      --
-      NGC 5194         202.469625  47.195167      --
-    PGC 100170          2.9477205 58.9115793      --
-    PGC 166192         20.5090597 60.3540088      --
-    PGC 166193         20.5255533 60.8123555      --
-      UGC 7490          186.10375  70.334278      --
+    Priority order per property: (1) the LVD catalog's own
+    ``RHALF``/``POSITION_ANGLE``/``ELLIPTICITY`` columns; (2) diameter
+    and BA from the LVGDB (``lvg_table1_2025-01-26_trim.txt``, matched
+    by position within 30 arcsec, then by name via a hardcoded set of
+    LVD <-> LVGDB name-spelling fixes in the nested
+    ``modify_lvg_names`` helper) -- LVGDB values, where available,
+    *override* the LVD catalog's own values; (3) for BA/PA
+    specifically, whatever ``cat`` already has from
+    SGA2020/HyperLeda/literature, in that preference order; (4)
+    hardcoded VI overrides from ``LVD-geometry-updates-{version}.csv``
+    (only applied for ``version == 'v1.0.5'``); (5) circular/PA=0
+    defaults for anything still missing. Writes the assembled table to
+    ``{sga_dir()}/parent/external/LVD_{version}_geometry.fits``, then
+    copies the results back into ``cat``'s ``RA``/``DEC`` and
+    ``DIAM_LIT``/``BA_LIT``/``PA_LIT`` (+``_REF``) columns for every
+    LVD-sourced row.
+
+    Notes
+    -----
+    Logs a warning if the LVD catalog version is not the expected
+    ``'v1.0.5'``, since the hardcoded VI-override file is
+    version-specific and silently skipped for any other version.
+
+    The following LVD sources are known to lack an ``RHALF``
+    measurement in the raw catalog (illustrative example from
+    development, not necessarily exhaustive for the current version)::
+
+           name            ra            dec      rhalf
+          str22         float64        float64   float64
+        ---------- ------------------ ---------- -------
+         dw1341-29 205.33416666666665   -29.5675      --
+             IC239             39.116     38.969      --
+          NGC 1042          2.6733275  -8.433591      --
+          NGC 4151         12.1757335 39.4057938      --
+          NGC 4424         12.4532467  9.4204423      --
+          NGC 5194         202.469625  47.195167      --
+        PGC 100170          2.9477205 58.9115793      --
+        PGC 166192         20.5090597 60.3540088      --
+        PGC 166193         20.5255533 60.8123555      --
+          UGC 7490          186.10375  70.334278      --
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Parent catalog with ``ROW_LVD`` (and the ``*_SGA2020``/
+        ``*_HYPERLEDA``/``*_LIT`` BA/PA columns) already populated for
+        LVD-matched rows.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``cat`` with LVD-sourced rows' ``RA``, ``DEC``, ``DIAM_LIT``,
+        ``BA_LIT``, ``PA_LIT`` (and ``_REF`` columns) updated in place.
+
+    Raises
+    ------
+    AssertionError
+        If any LVD object ends up without both a diameter and a BA
+        after all fallback layers are applied.
 
     """
     def modify_lvg_names(lvg_name):
+        """Apply a hardcoded set of spelling/format fixes to LVGDB
+        object names so they match LVD's naming convention for
+        name-based matching (e.g. strip spaces, ``'SagdSph'`` ->
+        ``'Sagittarius'``, ``'And '`` -> ``'Andromeda '``, and several
+        other one-off substitutions).
+
+        Parameters
+        ----------
+        lvg_name : :class:`numpy.ndarray` of :class:`str`
+            Raw LVGDB object names.
+
+        Returns
+        -------
+        :class:`numpy.ndarray` of :class:`str`
+            Names rewritten toward LVD's naming convention.
+
+        """
         lvg_name = np.char.replace(lvg_name, ' ', '')
         lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
         lvg_name = np.char.replace(lvg_name, 'And ', 'Andromeda ')
@@ -1019,8 +1361,46 @@ def update_lvd_properties(cat):
 
 
 def update_properties(cat, verbose=False):
-    """Update properties, including incorrect coordinates, in both NED and
-    HyperLeda.
+    """Apply hand-curated VI corrections to coordinates and geometry for
+    both NED- and HyperLeda-derived properties, on top of
+    :func:`update_lvd_properties`'s LVD-specific corrections.
+
+    First calls :func:`update_lvd_properties`. Then reads
+    ``SGA2025-vi-properties.csv`` and, for each listed object (matched
+    by exact ``OBJNAME``), overwrites ``RA``, ``DEC``, ``DIAM_LIT``,
+    ``PA_LIT``, ``BA_LIT``, ``DIAM_HYPERLEDA`` with the CSV's values
+    wherever the CSV value is not the missing-value sentinel (``-99.``);
+    if the CSV's ``update_hyperleda_coords`` field is ``'Yes'`` for that
+    row, also overwrites ``RA_HYPERLEDA``/``DEC_HYPERLEDA``. Finally,
+    applies a second hardcoded (in-source, not file-based) list of
+    ``SGA2020`` diameter corrections for ~58 specific objects
+    (``NGC 0134``, ``NGC 4157``, etc.) whose SGA-2020 diameters were
+    found to be grossly over/underestimated, replacing
+    ``DIAM_SGA2020`` with a hand-picked value (arcmin) for each.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Parent catalog to correct; needs ``OBJNAME``, ``OBJTYPE``,
+        ``RA``, ``DEC``, ``DIAM_LIT``, ``PA_LIT``, ``BA_LIT``,
+        ``DIAM_HYPERLEDA``, ``RA_HYPERLEDA``, ``DEC_HYPERLEDA``, plus
+        everything :func:`update_lvd_properties` needs.
+    verbose : :class:`bool`
+        If True, log every property update (or retention) in detail.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Corrected catalog (a modified copy; the original ``cat`` is not
+        mutated for the VI-properties step, though
+        :func:`update_lvd_properties` does mutate ``cat`` in place for
+        the LVD step before the copy is made).
+
+    Raises
+    ------
+    ValueError
+        If a VI-properties CSV row's ``objname_ned`` doesn't match
+        exactly one row in ``cat``.
 
     """
     # First, update the LVD objects.
@@ -1103,7 +1483,63 @@ def update_properties(cat, verbose=False):
 
 def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
                       width_pixels=38, bands=BANDS):
-    """Support routine for in_footprint.
+    """Distribute a chunk of the parent catalog across MPI ranks and find
+    which CCDs (from a pre-loaded CCDs table) touch each object, via a
+    coarse then fine positional match.
+
+    Rank 0 does a coarse ``match_radec`` (search radius ``radius``
+    degrees) between the chunk's objects and ``allccds`` to find, per
+    object, the candidate CCDs within reach; objects with zero candidate
+    CCDs are dropped. The resulting per-object candidate-CCD workload is
+    then load-balanced across ranks by CCD count
+    (``SGA.mpi.weighted_partition``) and distributed (via ``comm.send``/
+    ``comm.recv`` if running under MPI, or directly indexed if not).
+    Each rank then does a refined per-object search
+    (:func:`SGA.sky.get_ccds`) against only its assigned candidate CCDs
+    to get the final touching-CCD count/filter list per object. Results
+    are gathered back to rank 0 (via ``comm.gather`` if MPI), stacked,
+    and sorted by ``ROW_PARENT``.
+
+    Notes
+    -----
+    ``bands`` is accepted but never referenced in this function's body
+    -- it is accepted for API symmetry with :func:`in_footprint` (which
+    passes it through) but has no effect here.
+
+    Parameters
+    ----------
+    allcat : :class:`~astropy.table.Table`
+        Full parent catalog (or the portion visible to rank 0); only
+        ``chunkindx`` rows are processed by this call.
+    chunkindx : :class:`numpy.ndarray`
+        Row indices into ``allcat`` defining this chunk of objects to
+        process.
+    allccds : CCDs table
+        Full candidate CCDs table (e.g. from a legacypipe survey's
+        ``get_ccds_readonly()``) to search for matches.
+    comm : MPI communicator, optional
+        If given, distributes work across ranks; if None, runs on a
+        single simulated "rank 0 of 1" (via ``weighted_partition`` with
+        ``size=1``).
+    radius : :class:`float`
+        Coarse positional-match search radius, degrees.
+    width_pixels : :class:`int`
+        Mosaic width, in pixels, passed to :func:`SGA.sky.get_ccds` for
+        the refined per-object search.
+    bands : :class:`dict`
+        Unused (see Notes).
+
+    Returns
+    -------
+    fcat : :class:`~astropy.table.Table`
+        Per-object results (``ROW_PARENT``, ``NCCD``, ``FILTERS``,
+        etc.) for objects with at least one touching CCD, sorted by
+        ``ROW_PARENT``; empty on rank > 0, or if no objects in this
+        chunk have any candidate CCD.
+    fccds : :class:`~astropy.table.Table`
+        Matched CCDs for those objects, same row order/count
+        correspondence via ``ROW_PARENT``; empty under the same
+        conditions as ``fcat``.
 
     """
     from SGA.sky import get_ccds
@@ -1242,8 +1678,40 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
 
 
 def _read_existing_footprint(cat, region, version='v1.0'):
-    """Read existing / previous catalogs of running the footprint code on an
-    input catalog.
+    """Split ``cat`` into objects already resolved by a previous
+    :func:`in_footprint` run for this region (exact-position matches)
+    and objects still needing processing.
+
+    Reads the previously-written
+    ``SGA2025-parent-archive-{region}-{version}.fits`` catalog (if it
+    exists) and positionally matches it to ``cat`` at zero separation
+    (i.e. exact-position duplicates only -- objects that haven't moved
+    between runs); those are considered already done and their
+    ``NCCD``/``FILTERS`` are carried over directly without re-querying
+    CCDs. Objects with no exact-position match (or if no existing
+    catalog file is found) are returned as still-to-do.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Current parent catalog to check against the existing footprint
+        output; needs ``RA``/``DEC``.
+    region : :class:`str`
+        Survey region, used to build the existing-catalog filename.
+    version : :class:`str`
+        Archive catalog version, used to build the existing-catalog
+        filename.
+
+    Returns
+    -------
+    cat_todo : :class:`~astropy.table.Table`
+        Objects with no exact-position match in the existing catalog
+        (or all of ``cat``, if no existing catalog was found) -- still
+        need CCD matching.
+    cat_done : :class:`~astropy.table.Table`
+        Objects already resolved, with ``NCCD``/``FILTERS`` carried
+        over from the existing catalog; empty if none matched or no
+        existing catalog was found.
 
     """
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
@@ -1288,11 +1756,64 @@ def _read_existing_footprint(cat, region, version='v1.0'):
 
 def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
                  bands=BANDS, ntest=None, sga2020=False):
-    """Find which objects are in the given survey footprint based on positional
-    matching with a very generous (1 deg) search radius.
+    """Top-level driver: determine which parent-catalog objects fall
+    within a survey region's CCD footprint, and write the annotated
+    archive catalog.
 
-    radius in degrees
-    width_pixels - diameter for more refined search
+    Rank 0 reads either the SGA-2020 catalog (``sga2020=True``) or the
+    current archive-stage parent catalog (:func:`SGA.SGA.SGA_version`
+    ``archive=True``), optionally subsamples to ``ntest`` random rows
+    for testing, sorts by RA, loads the region's legacypipe survey CCDs
+    (quality-cut to ``ccd_cuts == 0``), applies two hardcoded
+    ``dr9-north``-specific exclusions (a CCD region around M31, and
+    objects inside the known-bad brick ``3288p000``), checks for
+    already-resolved objects from a previous run
+    (:func:`_read_existing_footprint`, skipped entirely when
+    ``sga2020=True``), splits the remaining objects into chunks (100,000
+    per chunk for ``dr9-north``, 10,000 otherwise), and processes each
+    chunk via :func:`in_footprint_work` (broadcasting chunk indices to
+    all ranks if running under MPI). Finally, rank 0 gathers all
+    results, re-matches them back onto the *full* catalog by position
+    (not ``ROW_PARENT``, which can change between catalog versions),
+    populates ``NCCD``/``FILTERS``, and writes the updated archive (or
+    SGA-2020) catalog.
+
+    Notes
+    -----
+    ``bands`` is accepted but never referenced in this function's body
+    -- the module-level ``BANDS[region]`` dict is used instead (via
+    ``get_survey(RUNS[region], allbands=BANDS[region])``), making this
+    parameter dead.
+
+    Parameters
+    ----------
+    region : :class:`str`
+        Survey region (e.g. ``'dr9-north'``); a generous 1-degree
+        coarse search radius is used before the refined per-object
+        search.
+    comm : MPI communicator, optional
+        If given, distributes work across ranks (only rank 0 does the
+        setup/gather; all ranks participate in :func:`in_footprint_work`).
+    radius : :class:`float`
+        Coarse positional-match search radius, degrees, passed to
+        :func:`in_footprint_work`.
+    width_pixels : :class:`int`
+        Mosaic width, in pixels, for the refined per-object CCD search.
+    bands : :class:`dict`
+        Unused (see Notes).
+    ntest : :class:`int`, optional
+        If given, randomly subsample the input catalog to this many
+        rows (fixed seed 1), for quick testing.
+    sga2020 : :class:`bool`
+        If True, run against the SGA-2020 catalog instead of the
+        current SGA-2025 archive-stage parent catalog, writing
+        ``SGA2020-{region}.fits`` instead of updating the archive file.
+
+    Returns
+    -------
+    None
+        Writes the updated archive (or SGA-2020) catalog to disk; all
+        work happens as a side effect.
 
     """
     from SGA.coadds import RUNS
@@ -1467,7 +1988,97 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
 
 
 def build_parent_nocuts(verbose=True, overwrite=False):
-    """Merge the external catalogs from SGA2025-query-ned.
+    """Top-level driver: merge all external catalogs (HyperLeda,
+    NED-LVS, LVD, SGA-2020, custom, DR9/DR10 supplement) into the
+    "no cuts" SGA-2025 parent sample, via a 9-stage sequential
+    cross-matching pipeline.
+
+    Skips entirely (returns immediately) if the versioned output file
+    already exists and ``overwrite`` is False. Otherwise:
+
+    Reads every external source (:func:`SGA.external.read_dr910`,
+    :func:`SGA.external.read_custom_external`, :func:`SGA.external.read_lvd`,
+    :func:`SGA.external.read_nedlvs`, :func:`SGA.external.read_sga2020`,
+    :func:`SGA.external.read_hyperleda` and its three constituent
+    exports) plus the corresponding NED byname/bycoord cross-match
+    files (produced by ``SGA2025-query-ned``), then proceeds through 9
+    numbered stages, each building a ``parentN`` table (via the nested
+    ``populate_parent`` helper, which copies matching columns from the
+    source catalog and its :func:`SGA.geometry.get_basic_geometry`
+    output into the :func:`parent_datamodel` schema) and appending it to
+    the running ``parent`` table:
+
+    0. Preprocess: identify and drop exact and near-duplicate entries
+       within ``ned_nedlvs`` and ``ned_hyper`` (by ``OBJNAME_NED`` and by
+       coincident coordinates), and drop known non-galaxy NED object
+       types (QSOs, stars, HII regions, etc.).
+    1. Match ``ned_hyper`` (HyperLeda x NED) to ``ned_nedlvs`` (NED-LVS x
+       NED) by shared NED columns via an :func:`astropy.table.join`.
+    2. Add remaining unmatched ``ned_hyper`` objects.
+    3. Add remaining unmatched ``ned_nedlvs`` objects (after removing
+       exact-position duplicates already captured in stages 1-2).
+    4. Add remaining HyperLeda objects (not resolved by NED at all) that
+       have a measured diameter and a plausible ``OBJTYPE``.
+    5. Add LVD objects: first match existing parent-sample entries to
+       LVD by NED name, then by PGC number, then add genuinely new LVD
+       objects not yet in the sample.
+    6. Match/add SGA-2020 objects by PGC number.
+    7. Add the hand-curated "custom" catalog (including the SMUDGes
+       dwarf-galaxy sample, whose diameters get an upstream
+       Re->RHolm 1.2x correction applied here -- see
+       ``archive/bin-SGA2025/parse-smudges``), matching SMUDGes entries
+       to existing parent rows within 5 arcsec before adding the rest as
+       new rows.
+    8. Add the DR9/DR10 supplemental catalog (from
+       ``archive/bin-SGA2025/parse-dr9-dr10``).
+    9. Finalize: pick ``RA``/``DEC``/``OBJNAME``/``Z`` per object by
+       source priority (LVD > NED > NEDLVS > SGA2020 > HyperLeda > DR910
+       for position/name; NEDLVS > NED > HyperLeda for redshift, with
+       HyperLeda names passed through :func:`SGA.external.nedfriendly_hyperleda`
+       and re-spaced to match NED conventions), then similarly
+       reprioritize ``DIAM_LIT``/``BA_LIT``/``PA_LIT``/``MAG_LIT`` (LVD
+       and custom/SMUDGes take priority over HyperLeda/NED-LVS/DR910),
+       and populate separate ``*_HYPERLEDA``/``*_SGA2020`` geometry
+       columns directly from those sources.
+
+    Throughout, dozens of specific object names are hardcoded and
+    dropped, PGC-corrected, or excluded as known cross-identification
+    errors between the external catalogs (e.g. duplicate NED matches,
+    HyperLeda objects that resolve to the wrong NED counterpart); these
+    are not exhaustively enumerated here but are inline-commented at
+    each occurrence in the function body. Numerous ``assert``s throughout
+    guard against unexpected duplicate ``ROW_*``/``OBJNAME_*``/``PGC``
+    values, raising ``ValueError`` (after a ``log.critical``) if
+    violated.
+
+    Notes
+    -----
+    The final "ROW_PARENT must be unique across versions" block is
+    incomplete: it checks for existing ``SGA2025-parent-nocuts-*-rows.fits``
+    files from prior catalog versions and logs a literal
+    ``log.warning('FIXME!')`` if any are found, but then computes
+    ``rows = numpy.arange(len(parent))`` in *both* branches of that
+    check -- i.e. the intended cross-version row-number stability logic
+    is not actually implemented; the branch is a no-op today.
+
+    Parameters
+    ----------
+    verbose : :class:`bool`
+        If True, log every column as it's populated at each merge stage
+        (very verbose -- intended for debugging a specific merge run).
+    overwrite : :class:`bool`
+        If True, rebuild even if the versioned output file already
+        exists.
+
+    Returns
+    -------
+    None
+        Writes ``SGA2025-parent-nocuts-{version}.fits`` (the merged
+        parent catalog, extension name ``PARENT-NOCUTS``) and
+        ``SGA2025-parent-nocuts-{version}-rows.fits`` (an
+        ``OBJNAME``/``ROW_PARENT`` lookup table) to
+        ``{sga_dir()}/parent/``; returns early with no output if the
+        final file already exists and ``overwrite`` is False.
 
     """
     import re
