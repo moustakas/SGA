@@ -1,10 +1,28 @@
 #!/usr/bin/env python
 
-"""Build a full-sky Gaia catalog.
+"""Build a full-sky Gaia/Tycho bright-and-medium-star mask catalog, by
+looping over all DR9 survey bricks (in batches of 10,000, in parallel
+via ``astrometry.util.multiproc``), pulling each brick's reference
+sources via ``legacypipe.reference.get_reference_sources``, and
+merging the results into one all-sky FITS catalog (plus a
+Galactic-latitude-trimmed "extragalactic" version).
 
 Code is mostly based on code written by Dustin Lang:
   https://github.com/legacysurvey/legacypipe/blob/main/py/legacyanalysis/gaia-masks.py
   https://github.com/legacysurvey/legacypipe/blob/main/py/legacyanalysis/gaia-star-mask-fix.ipynb
+
+Notes
+-----
+A standalone, one-off NERSC batch script rather than an importable
+module: it has no command-line interface (no ``argparse``; every
+path, batch size, and worker count is hardcoded in :func:`main`), and
+every table is an ``astrometry.util.fits.fits_table`` rather than an
+:class:`astropy.table.Table` (a different data-handling convention
+than the rest of this package). All per-brick output batches
+(``gaia-mask-set{NNN:03d}.fits``) are cached under
+``$SCRATCH/gaia``, and the script skips re-processing a batch whose
+output file already exists on a re-run -- so partial/interrupted runs
+resume where they left off rather than starting over.
 
 """
 import os, pdb
@@ -21,10 +39,51 @@ from legacypipe.survey import LegacySurveyData
 from legacypipe.format_catalog import get_units_for_columns
 
 def bounce_one_brick(X):
+    """Unpack a single argument tuple and call :func:`one_brick` --
+    the top-level callable required by
+    ``astrometry.util.multiproc.multiproc.map``.
+
+    Parameters
+    ----------
+    X : :class:`tuple`
+        ``(brick, survey)``, forwarded to :func:`one_brick`.
+
+    Returns
+    -------
+    Return value of :func:`one_brick`.
+
+    """
     return one_brick(*X)
 
 
 def one_brick(brick, survey):
+    """Retrieve the Gaia/Tycho bright-and-medium-star reference
+    sources falling strictly inside one brick's boundary.
+
+    Parameters
+    ----------
+    brick : :class:`astrometry.util.fits.tabledata`
+        Single-brick record (a row of the survey-bricks table) with
+        ``brickname``, ``ra1``/``ra2``, ``dec1``/``dec2``.
+    survey : :class:`legacypipe.survey.LegacySurveyData`
+        Survey object used to locate the reference-catalog files.
+
+    Returns
+    -------
+    :class:`astrometry.util.fits.tabledata` or None
+        Reference-source table for this brick (with a ``brickname``
+        column added), restricted to sources that are both inside the
+        brick's RA/Dec bounds and flagged bright or medium; None if no
+        such sources are found.
+
+    Notes
+    -----
+    Passes ``gaia_margin=0.`` to ``get_reference_sources`` specifically
+    so that sources near a brick edge are not double-counted -- each
+    source is expected to be picked up by exactly one neighboring
+    brick's own query, not this one.
+
+    """
     wcs = wcs_for_brick(brick)
     # gaia_margin: don't retrieve sources outside the brick (we'll get them
     # in the neighbouring brick!)
@@ -45,6 +104,37 @@ def one_brick(brick, survey):
 
 
 def main():
+    """Command-line entry point: build the all-sky Gaia/Tycho star-mask
+    catalog and write two output FITS files (full-sky and
+    Galactic-latitude-trimmed).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Every parameter is hardcoded rather than exposed as a flag: the
+    survey-bricks file is read from a fixed DR9 path
+    (``/global/cfs/cdirs/cosmo/data/legacysurvey/dr9/survey-bricks.fits.gz``)
+    while the reference-source lookups use a DR10
+    ``LegacySurveyData`` (``/global/cfs/cdirs/cosmo/work/legacysurvey/dr10``)
+    -- a DR9 brick list paired with DR10 imaging metadata, presumably
+    intentional (the brick grid is unchanged between releases) but not
+    documented as such in the original script. The diagnostic hexbin
+    figure is saved to the relative path ``'ioannis/tmp/junk.png'``
+    (missing a leading ``/`` and host-specific path components) rather
+    than an absolute path -- this only succeeds if a directory
+    literally named ``ioannis/tmp`` happens to exist under the current
+    working directory, and otherwise raises ``FileNotFoundError``.
+    Worker count (16) and per-batch brick count (10,000) are also
+    hardcoded. The Gaia-column-renaming loop's ``if 'gaia_'+c in
+    G.get_columns(): continue`` guard (marked with a ``# HACK``
+    comment) exists so the script can be safely re-run against an
+    already-renamed cache file without raising on
+    ``G.rename()`` of a column that no longer has its original name.
+
+    """
     #from astrometry.util.util import radecdegtohealpix, healpix_xy_to_ring
     # healpixes = set()
     # nside = 32
