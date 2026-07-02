@@ -33,34 +33,61 @@ ARCMIN_PER_DEG = 60.0
 # ============================================================================
 
 def wrap_deg(x):
-    """Wrap angle(s) into [0, 360) degrees."""
+    """Wrap angle(s) into [0, 360) degrees.
+
+    Parameters
+    ----------
+    x : :class:`float` or array-like
+        Angle(s), degrees.
+
+    Returns
+    -------
+    :class:`float` or :class:`numpy.ndarray`
+        Wrapped angle(s), in [0, 360).
+
+    """
     return np.mod(x, 360.0)
 
 
 def angdiff_deg(a, b):
-    """Signed difference a-b wrapped into (-180, 180] degrees."""
+    """Signed angular difference ``a - b``, wrapped into (-180, 180]
+    degrees.
+
+    Parameters
+    ----------
+    a, b : :class:`float` or array-like
+        Angles, degrees.
+
+    Returns
+    -------
+    :class:`float` or :class:`numpy.ndarray`
+        ``a - b``, wrapped into (-180, 180].
+
+    """
     return (a - b + 180.0) % 360.0 - 180.0
 
 
 def directional_radius(a_arc, b_arc, pa_rad, bearing_rad):
-    """
-    Ellipse radius (arcmin) along a bearing direction.
+    """Compute an ellipse's radius (arcmin) along a given bearing
+    direction from its center.
 
     Works with both scalars and arrays (fully vectorized).
 
     Parameters
     ----------
-    a_arc, b_arc : float or array-like
-        Semi-major and semi-minor axes (arcmin)
-    pa_rad : float or array-like
-        Position angle (radians, astronomical convention)
-    bearing_rad : float or array-like
-        Bearing direction (radians, astronomical convention)
+    a_arc, b_arc : :class:`float` or array-like
+        Semi-major and semi-minor axes, arcmin.
+    pa_rad : :class:`float` or array-like
+        Position angle, radians, astronomical convention.
+    bearing_rad : :class:`float` or array-like
+        Bearing direction, radians, astronomical convention.
 
     Returns
     -------
-    float or ndarray
-        Radius in arcmin along specified bearing
+    :class:`float` or :class:`numpy.ndarray`
+        Ellipse radius, arcmin, along the specified bearing; falls back
+        to ``a_arc`` for degenerate (``a_arc <= 0`` or ``b_arc <= 0``)
+        input.
 
     """
     # Convert to arrays for uniform handling
@@ -93,27 +120,37 @@ def directional_radius(a_arc, b_arc, pa_rad, bearing_rad):
 
 
 def contains_point(a_arc, b_arc, pa_rad, dx_deg, dy_deg, scale=1.0):
-    """
-    Check if point (dx, dy) lies inside scaled ellipse.
+    """Check whether point ``(dx_deg, dy_deg)`` lies inside a scaled
+    ellipse centered at the origin.
 
-    Note: This checks if a POINT is inside an ellipse, not ellipse-ellipse overlap.
-    For ellipse overlap, use ellipses_overlap().
+    This checks if a POINT is inside an ellipse, not ellipse-ellipse
+    overlap. For ellipse overlap, use :func:`ellipses_overlap` (this
+    module's version, taking tangent-plane offsets and arcmin axes --
+    distinct from :func:`SGA.geometry.ellipses_overlap`, which operates
+    in pixel coordinates).
+
+    Notes
+    -----
+    This function is currently unreachable in the group-finding
+    pipeline: its only caller, :meth:`State.contains`, is itself never
+    called anywhere in this module (:func:`should_link` uses
+    :meth:`State.overlaps` exclusively).
 
     Parameters
     ----------
-    a_arc, b_arc : float
-        Semi-major and semi-minor axes (arcmin)
-    pa_rad : float
-        Position angle (radians, astronomical convention)
-    dx_deg, dy_deg : float
-        Point offset in local tangent plane (degrees)
-    scale : float
-        Scale factor for ellipse (>1 expands)
+    a_arc, b_arc : :class:`float`
+        Semi-major and semi-minor axes, arcmin.
+    pa_rad : :class:`float`
+        Position angle, radians, astronomical convention.
+    dx_deg, dy_deg : :class:`float`
+        Point offset in the local tangent plane, degrees.
+    scale : :class:`float`
+        Scale factor for the ellipse (>1 expands).
 
     Returns
     -------
-    bool
-        True if point is inside scaled ellipse
+    :class:`bool`
+        True if the point is inside the scaled ellipse.
 
     """
     if a_arc <= 0.0 or b_arc <= 0.0:
@@ -132,31 +169,36 @@ def contains_point(a_arc, b_arc, pa_rad, dx_deg, dy_deg, scale=1.0):
 
 
 def ellipses_overlap(a1, b1, pa1_rad, a2, b2, pa2_rad, dx_deg, dy_deg, scale=1.0):
-    """
-    Check if two scaled ellipses overlap.
+    """Check whether two scaled ellipses overlap, via directional radii
+    along the center-center line.
 
-    This is the proper test for determining if two galaxies are close enough
-    to be considered overlapping/interacting.
+    The proper test for determining if two galaxies are close enough to
+    be considered overlapping/interacting: computes each ellipse's
+    radius (:func:`directional_radius`) toward the other's center, and
+    checks whether the center separation is within the sum of those
+    (scaled) directional radii. Distinct from
+    :func:`SGA.geometry.ellipses_overlap` (pixel-coordinate,
+    boundary-sampling version) despite the shared name.
 
     Parameters
     ----------
-    a1, b1 : float
-        Semi-major and semi-minor axes of ellipse 1 (arcmin)
-    pa1_rad : float
-        Position angle of ellipse 1 (radians, astronomical convention)
-    a2, b2 : float
-        Semi-major and semi-minor axes of ellipse 2 (arcmin)
-    pa2_rad : float
-        Position angle of ellipse 2 (radians, astronomical convention)
-    dx_deg, dy_deg : float
-        Offset from ellipse 1 center to ellipse 2 center (degrees)
-    scale : float
-        Scale factor applied to both ellipses (e.g., 1.5 = 50% margin)
+    a1, b1 : :class:`float`
+        Semi-major and semi-minor axes of ellipse 1, arcmin.
+    pa1_rad : :class:`float`
+        Position angle of ellipse 1, radians, astronomical convention.
+    a2, b2 : :class:`float`
+        Semi-major and semi-minor axes of ellipse 2, arcmin.
+    pa2_rad : :class:`float`
+        Position angle of ellipse 2, radians, astronomical convention.
+    dx_deg, dy_deg : :class:`float`
+        Offset from ellipse 1's center to ellipse 2's center, degrees.
+    scale : :class:`float`
+        Scale factor applied to both ellipses (e.g. 1.5 = 50% margin).
 
     Returns
     -------
-    bool
-        True if the scaled ellipses overlap
+    :class:`bool`
+        True if the scaled ellipses overlap.
 
     """
     # Separation between centers
@@ -179,18 +221,65 @@ def ellipses_overlap(a1, b1, pa1_rad, a2, b2, pa2_rad, dx_deg, dy_deg, scale=1.0
 # ============================================================================
 
 class DSU:
-    """Union-Find with path compression and union by rank."""
+    """Disjoint Set Union (Union-Find) with path compression and union
+    by rank, used to accumulate galaxy-group membership as pairwise
+    links are discovered.
+
+    Attributes
+    ----------
+    p : :class:`list` of :class:`int`
+        Parent pointer per element (index = element).
+    r : :class:`list` of :class:`int`
+        Union-by-rank tree-depth heuristic per element.
+
+    """
 
     def __init__(self, n):
+        """Initialize ``n`` singleton sets, each its own root.
+
+        Parameters
+        ----------
+        n : :class:`int`
+            Number of elements.
+
+        """
         self.p = list(range(n))
         self.r = [0] * n
 
     def find(self, x):
+        """Find the root (representative) of ``x``'s set, with path
+        compression.
+
+        Parameters
+        ----------
+        x : :class:`int`
+            Element index.
+
+        Returns
+        -------
+        :class:`int`
+            Root index of ``x``'s set.
+
+        """
         if self.p[x] != x:
             self.p[x] = self.find(self.p[x])
         return self.p[x]
 
     def union(self, a, b):
+        """Merge the sets containing ``a`` and ``b``, by rank.
+
+        Parameters
+        ----------
+        a, b : :class:`int`
+            Element indices.
+
+        Returns
+        -------
+        :class:`bool`
+            True if a merge occurred; False if ``a`` and ``b`` were
+            already in the same set.
+
+        """
         ra, rb = self.find(a), self.find(b)
         if ra == rb:
             return False
@@ -210,7 +299,52 @@ class DSU:
 
 @dataclass
 class Params:
-    """Algorithm parameters."""
+    """Group-finding algorithm parameters, assembled once per
+    :func:`build_group_catalog` call and threaded through
+    :class:`State`.
+
+    Attributes
+    ----------
+    anisotropic : :class:`bool`
+        If False, always use isotropic (circular) link thresholds
+        regardless of ``link_mode``.
+    link_mode : :class:`str`
+        ``'off'``/None (isotropic only), ``'anisotropic'`` (always use
+        directional radii), or ``'hybrid'`` (directional radii for
+        small-small pairs, size-dependent treatment for pairs involving
+        a "big" object -- see :meth:`State.pair_threshold`).
+    mfac : :class:`float`
+        Link multiplier for small-small pairs.
+    big_diam : :class:`float`
+        Diameter threshold (arcmin) above which an object is treated as
+        "big" in hybrid mode.
+    mfac_backbone : :class:`float`
+        Link multiplier for big-big pairs (hybrid mode).
+    mfac_sat : :class:`float`
+        Link multiplier for big-small pairs (hybrid mode).
+    k_floor : :class:`float`
+        Minimum fraction of an object's circular radius used as a floor
+        on its directional radius in big-small pairs (hybrid mode).
+    q_floor : :class:`float`
+        Minimum effective axis ratio (b/a) floor applied when computing
+        anisotropic radii, to avoid pathologically thin ellipses.
+    dmax_arcmin : :class:`float`
+        Maximum center-to-center separation, arcmin, considered for
+        linking (beyond the containment pre-check).
+    dmin_arcmin : :class:`float`
+        Minimum link threshold, arcmin, applied as a floor regardless of
+        the computed pair threshold.
+    cell_arcmin : :class:`float`
+        Spatial grid cell size, arcmin, for :class:`Grid` neighbor
+        search within a precluster.
+    contain : :class:`bool`
+        If True, also link (and later merge) pairs whose scaled
+        ellipses overlap, independent of the threshold/``dmax`` checks.
+    contain_margin : :class:`float`
+        Fractional margin applied when scaling ellipses for the
+        containment/overlap checks (e.g. 0.75 = 75% expansion).
+
+    """
     anisotropic: bool
     link_mode: str
     mfac: float
@@ -227,9 +361,48 @@ class Params:
 
 
 class State:
-    """Encapsulates all data for group finding (replaces globals)."""
+    """Encapsulate all per-object data and derived ellipse geometry
+    needed for group finding, replacing what used to be module-level
+    globals (so the algorithm is safe to run in multiprocessing
+    workers).
+
+    Attributes
+    ----------
+    n : :class:`int`
+        Number of objects.
+    ra, dec : :class:`numpy.ndarray`
+        Object positions, degrees.
+    diam : :class:`numpy.ndarray`
+        Object diameters, arcmin.
+    ba, pa : :class:`numpy.ndarray`
+        Object axis ratio and position angle (degrees); ``numpy.nan``
+        where the input catalog lacks ``BA``/``PA`` columns.
+    a_arc, b_arc : :class:`numpy.ndarray`
+        Semi-major/semi-minor axes, arcmin (``b_arc`` uses ``ba``,
+        floored at ``params.q_floor`` if positive, defaulting to
+        circular (``ba=1``) where ``ba`` is missing/non-positive).
+    pa_rad : :class:`numpy.ndarray`
+        Position angle, radians (0 where ``pa`` is missing).
+    has_aniso : :class:`numpy.ndarray` of :class:`bool`
+        True for objects with finite, valid ``ba``/``pa`` (i.e. genuine
+        anisotropic geometry available, vs. the circular default).
+    params : :class:`Params`
+        Algorithm parameters.
+
+    """
 
     def __init__(self, cat, params):
+        """Derive per-object ellipse geometry from a catalog.
+
+        Parameters
+        ----------
+        cat : :class:`~astropy.table.Table`
+            Catalog with ``RA``, ``DEC``, ``DIAM`` (required) and
+            ``BA``, ``PA`` (optional) columns.
+        params : :class:`Params`
+            Algorithm parameters.
+
+        """
         self.n = len(cat)
         self.ra = np.asarray(cat['RA'], dtype=float)
         self.dec = np.asarray(cat['DEC'], dtype=float)
@@ -248,10 +421,59 @@ class State:
 
     @staticmethod
     def _get(cat, name, default):
+        """Read a column from ``cat`` as a float array, or a
+        constant-filled fallback array if the column is absent.
+
+        Parameters
+        ----------
+        cat : :class:`~astropy.table.Table`
+            Catalog to read from.
+        name : :class:`str`
+            Column name.
+        default : :class:`float`
+            Fill value used (for every row) if ``name`` is not a column
+            in ``cat``.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            Length ``len(cat)`` float array.
+
+        """
         return np.asarray(cat[name], dtype=float) if name in cat.colnames else np.full(len(cat), default, dtype=float)
 
     def pair_threshold(self, i, j, dx_deg, dy_deg):
-        """Compute link threshold for pair (i,j)."""
+        """Compute the link (pairing) threshold, in arcmin, for object
+        pair ``(i, j)``, per the ``link_mode``/anisotropy rules in
+        :attr:`params`.
+
+        Isotropic (``not params.anisotropic`` or ``link_mode in ('off',
+        None)``): half the mean of the two circular radii, scaled by
+        ``mfac``. Anisotropic (``link_mode == 'anisotropic'``): same,
+        but using each object's directional radius toward the other
+        (:meth:`_dir_radius`) instead of its circular radius. Hybrid
+        (``link_mode == 'hybrid'``, the default): big-big pairs (both
+        diameters >= ``params.big_diam``) use circular radii scaled by
+        ``mfac_backbone``; big-small pairs use directional radii
+        (floored at ``k_floor`` times the circular radius) scaled by
+        ``mfac_sat``; small-small pairs use directional radii scaled by
+        ``mfac``.
+
+        Parameters
+        ----------
+        i, j : :class:`int`
+            Indices of the two objects.
+        dx_deg, dy_deg : :class:`float`
+            Tangent-plane offset from object ``i`` to object ``j``,
+            degrees.
+
+        Returns
+        -------
+        :class:`float`
+            Link threshold, arcmin (not yet floored at
+            ``params.dmin_arcmin`` -- see :func:`should_link`).
+
+        """
         p = self.params
         ri_c, rj_c = self.a_arc[i], self.a_arc[j]
 
@@ -275,17 +497,76 @@ class State:
         return 0.5 * p.mfac * (ri_a + rj_a)
 
     def _dir_radius(self, i, dx_deg, dy_deg):
+        """Object ``i``'s radius toward a given bearing, or its
+        circular radius if it lacks valid anisotropic geometry.
+
+        Parameters
+        ----------
+        i : :class:`int`
+            Object index.
+        dx_deg, dy_deg : :class:`float`
+            Offset defining the bearing direction, degrees.
+
+        Returns
+        -------
+        :class:`float`
+            Directional (or circular, if ``not has_aniso[i]``) radius,
+            arcmin.
+
+        """
         if not self.has_aniso[i]:
             return self.a_arc[i]
         bearing = math.atan2(dx_deg, dy_deg)
         return directional_radius(self.a_arc[i], self.b_arc[i], self.pa_rad[i], bearing)
 
     def contains(self, i, j, dx_deg, dy_deg, scale):
-        """Check if j's center is inside i's scaled ellipse."""
+        """Check if object ``j``'s center (given by the offset from
+        ``i``) is inside object ``i``'s scaled ellipse.
+
+        Notes
+        -----
+        Never called anywhere in this module -- :func:`should_link`
+        uses :meth:`overlaps` exclusively, so this method (and
+        :func:`contains_point`, which it wraps) is dead code in the
+        current pipeline. ``j`` is also accepted but unused in the
+        body; only ``dx_deg``/``dy_deg`` (the precomputed offset) and
+        ``i``'s geometry are used.
+
+        Parameters
+        ----------
+        i, j : :class:`int`
+            Indices of the two objects.
+        dx_deg, dy_deg : :class:`float`
+            Offset from object ``i`` to object ``j``, degrees.
+        scale : :class:`float`
+            Scale factor applied to ``i``'s ellipse.
+
+        Returns
+        -------
+        :class:`bool`
+            True if ``j``'s center is inside ``i``'s scaled ellipse.
+
+        """
         return contains_point(self.a_arc[i], self.b_arc[i], self.pa_rad[i], dx_deg, dy_deg, scale)
 
     def overlaps(self, i, j, dx_deg, dy_deg, scale):
-        """Check if i and j's scaled ellipses overlap."""
+        """Check if objects ``i`` and ``j``'s scaled ellipses overlap.
+
+        Parameters
+        ----------
+        i, j : :class:`int`
+            Indices of the two objects.
+        dx_deg, dy_deg : :class:`float`
+            Offset from object ``i`` to object ``j``, degrees.
+        scale : :class:`float`
+            Scale factor applied to both ellipses.
+
+        Returns
+        -------
+        :class:`bool`
+            True if the scaled ellipses overlap.
+
+        """
         return ellipses_overlap(
             self.a_arc[i], self.b_arc[i], self.pa_rad[i],
             self.a_arc[j], self.b_arc[j], self.pa_rad[j],
@@ -298,9 +579,30 @@ class State:
 # ============================================================================
 
 class Grid:
-    """Spatial grid for neighbor search."""
+    """Uniform spatial hash grid over tangent-plane offsets, for fast
+    candidate-neighbor lookup within a precluster (see
+    :func:`process_cluster`).
+
+    Attributes
+    ----------
+    gx, gy : :class:`numpy.ndarray`
+        Integer grid-cell coordinates of each point.
+    bins : :class:`dict`
+        ``(gx, gy)`` cell -> list of point indices in that cell.
+
+    """
 
     def __init__(self, dx, dy, cell_deg):
+        """Bin points into a uniform grid.
+
+        Parameters
+        ----------
+        dx, dy : :class:`numpy.ndarray`
+            Tangent-plane offsets of each point, degrees.
+        cell_deg : :class:`float`
+            Grid cell size, degrees.
+
+        """
         self.gx = np.floor(dx / cell_deg).astype(np.int64)
         self.gy = np.floor(dy / cell_deg).astype(np.int64)
         self.bins = {}
@@ -309,6 +611,20 @@ class Grid:
             self.bins.setdefault(key, []).append(k)
 
     def neighbors(self, k):
+        """Return the indices of all points in point ``k``'s cell and
+        its 8 adjacent cells (3x3 block).
+
+        Parameters
+        ----------
+        k : :class:`int`
+            Point index.
+
+        Returns
+        -------
+        :class:`list` of :class:`int`
+            Candidate neighbor indices (includes ``k`` itself).
+
+        """
         cx, cy = int(self.gx[k]), int(self.gy[k])
         result = []
         for dx in (-1, 0, 1):
@@ -322,7 +638,36 @@ class Grid:
 # ============================================================================
 
 def process_cluster(members, state, contain_search_arcmin=15.0/60.0):
-    """Find linkages within a precluster.
+    """Find pairwise links within one spherical precluster (see
+    :func:`build_group_catalog`'s Step 1/2), via a local tangent-plane
+    projection and grid-based neighbor search.
+
+    Projects ``members`` onto a tangent plane centered at their median
+    position, bins them into a :class:`Grid` (cell size
+    ``state.params.cell_arcmin``), and for each candidate neighbor pair
+    (from adjacent grid cells, each pair considered once) tests
+    :func:`should_link`. Ellipses are scaled by
+    ``1 + state.params.contain_margin`` for the containment checks
+    inside :func:`should_link`.
+
+    Parameters
+    ----------
+    members : :class:`list` of :class:`int`
+        Indices (into ``state``'s arrays) of objects in this
+        precluster. If fewer than 2, returns immediately with no edges.
+    state : :class:`State`
+        Group-finding state.
+    contain_search_arcmin : :class:`float`
+        Separation, arcmin, below which the containment/overlap check
+        is tried even for pairs that would otherwise fail the standard
+        threshold (passed through to :func:`should_link`).
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Shape ``(nlinks, 2)`` array of ``(i, j)`` index pairs (into
+        ``state``'s arrays) to be unioned in the caller's :class:`DSU`;
+        shape ``(0, 2)`` if none.
 
     """
     if len(members) < 2:
@@ -360,7 +705,40 @@ def process_cluster(members, state, contain_search_arcmin=15.0/60.0):
 
 
 def should_link(i, j, ddx, ddy, sep, state, scale, search_arcmin):
-    """Determine if pair should be linked.
+    """Decide whether object pair ``(i, j)`` should be linked into the
+    same group, combining a close-pair ellipse-overlap check, a
+    maximum-separation cutoff, and a size-dependent threshold.
+
+    Checked in order: (1) if ``state.params.contain`` and
+    ``sep <= search_arcmin``, link if the (scaled) ellipses overlap
+    (:meth:`State.overlaps`); (2) reject outright if
+    ``sep > state.params.dmax_arcmin``; (3) if ``state.params.contain``,
+    link if the (scaled) ellipses overlap, regardless of distance within
+    ``dmax``; (4) otherwise link if ``sep`` is within the size-dependent
+    pair threshold (:meth:`State.pair_threshold`, floored at
+    ``state.params.dmin_arcmin``).
+
+    Parameters
+    ----------
+    i, j : :class:`int`
+        Indices of the two objects.
+    ddx, ddy : :class:`float`
+        Tangent-plane offset from object ``i`` to object ``j``, degrees.
+    sep : :class:`float`
+        Center-to-center separation, arcmin (``hypot(ddx, ddy)`` in
+        arcmin).
+    state : :class:`State`
+        Group-finding state.
+    scale : :class:`float`
+        Ellipse scale factor for the overlap checks.
+    search_arcmin : :class:`float`
+        Separation below which the close-pair overlap pre-check (step 1
+        above) is tried.
+
+    Returns
+    -------
+    :class:`bool`
+        True if the pair should be linked.
 
     """
     p = state.params
@@ -389,19 +767,56 @@ def should_link(i, j, ddx, ddy, sep, state, scale, search_arcmin):
 _WORKER_STATE = None
 
 def _init_worker(state):
+    """``ProcessPoolExecutor`` initializer: stash ``state`` in a
+    process-global so :func:`_worker_wrapper` can access it without
+    repickling/copying it on every task.
+
+    Parameters
+    ----------
+    state : :class:`State`
+        Group-finding state, set as the module-global ``_WORKER_STATE``
+        in this worker process.
+
+    Returns
+    -------
+    None
+
+    """
     global _WORKER_STATE
     _WORKER_STATE = state
 
 def _check_group_pair_overlap(args):
-    """
-    Worker function to check if two groups have overlapping members.
+    """Check whether any member of provisional group ``i`` overlaps any
+    member of provisional group ``j``, for
+    :func:`_merge_overlapping_groups`.
 
-    Vectorized version for performance.
+    A cheap group-center distance check first rules out pairs whose
+    bounding radii plus ``max_search_radius`` can't possibly overlap;
+    otherwise, for each member of group ``i``, vectorizes the offset and
+    separation to every member of group ``j``, cheaply filters to
+    candidates within the sum of circular radii, and only then runs the
+    exact :func:`ellipses_overlap` test on those candidates. Returns as
+    soon as any overlapping member pair is found.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        ``(root_i, root_j, pos_i, pos_j, state, scale, max_search_radius)``,
+        where ``root_i``/``root_j`` are the two groups' DSU root indices
+        (accepted but unused in this function's body -- the caller uses
+        them to interpret the return value, not this function), ``pos_i``/
+        ``pos_j`` are dicts with keys ``'ra'``, ``'dec'``, ``'radius'``
+        (degrees) and ``'members'`` (index array), ``state`` is the
+        :class:`State`, ``scale`` is the ellipse scale factor, and
+        ``max_search_radius`` is the group-center pre-check margin,
+        arcmin.
 
     Returns
     -------
-    tuple or None
-        (idx_i, idx_j) if overlap found, else None
+    :class:`tuple` of :class:`int` or None
+        ``(idx_i, idx_j)`` -- the specific overlapping member indices --
+        if an overlap is found, else None.
+
     """
     root_i, root_j, pos_i, pos_j, state, scale, max_search_radius = args
 
@@ -451,33 +866,46 @@ def _check_group_pair_overlap(args):
 
 
 def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
-    """
-    Merge groups where members have overlapping ellipses.
+    """Merge provisional groups whose members' (unscaled) ellipses
+    overlap, catching cases like IC 4278 inside NGC 5194 that initial
+    linking (:func:`process_cluster`) missed because the pair exceeded
+    ``dmax_arcmin``.
 
-    This catches cases like IC 4278 inside NGC 5194 that were missed
-    during initial linking due to exceeding dmax.
+    Restricts the expensive pairwise check to "candidate" groups (max
+    member diameter > 1' or >= 10 members), builds a spatial index of
+    candidate-group centers, filters to plausibly-overlapping group
+    pairs by center separation, then checks each surviving pair via
+    :func:`_check_group_pair_overlap` (in parallel across ``mp``
+    processes if requested) and unions any pair found to overlap.
 
-    Vectorized version for performance with large catalogs.
+    Notes
+    -----
+    ``contain_margin`` is accepted but never referenced in this
+    function's body -- overlap checking here always uses unscaled
+    ellipses (``scale = 1.0``, hardcoded), regardless of the value
+    passed in.
 
-    NOTE: This step is expensive (O(N_large * N_small)) and may not be necessary
-    if merge_centers (Step 5) is enabled with appropriate merge_sep_arcsec.
-    For most cases, merge_centers alone is sufficient to prevent duplicate GROUP_NAMEs.
+    This step is expensive (O(N_large * N_small)) and may not be
+    necessary if ``merge_centers`` (:func:`build_group_catalog`'s Step
+    5) is enabled with an appropriate ``merge_sep_arcsec``; for most
+    cases, ``merge_centers`` alone is sufficient to prevent duplicate
+    ``GROUP_NAME``s.
 
     Parameters
     ----------
-    dsu : DSU
-        Disjoint set union structure (modified in place)
-    state : State
-        Group finder state with galaxy properties
-    contain_margin : float
-        Margin for ellipse overlap (e.g., 0.75 = 75% expansion)
-    mp : int
-        Number of parallel processes
+    dsu : :class:`DSU`
+        Disjoint-set-union structure, modified in place.
+    state : :class:`State`
+        Group-finding state with galaxy properties.
+    contain_margin : :class:`float`
+        Unused (see Notes).
+    mp : :class:`int`
+        Number of parallel processes.
 
     Returns
     -------
-    int
-        Number of group pairs merged
+    :class:`int`
+        Number of group pairs merged.
 
     """
     # Get current provisional groups
@@ -599,6 +1027,22 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
 
 
 def _worker_wrapper(args):
+    """Unpack an argument tuple and call :func:`process_cluster` using
+    the process-global ``_WORKER_STATE`` (set by :func:`_init_worker`);
+    ``ProcessPoolExecutor`` map worker for :func:`build_group_catalog`'s
+    Step 2.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        ``(members, search)``, matching :func:`process_cluster`'s
+        ``members``/``contain_search_arcmin`` parameters.
+
+    Returns
+    -------
+    See :func:`process_cluster`.
+
+    """
     members, search = args
     return process_cluster(members, _WORKER_STATE, search)
 
@@ -608,7 +1052,33 @@ def _worker_wrapper(args):
 # ============================================================================
 
 def report_group_statistics(cat, params, links, n_preclusters, timing):
-    """Generate detailed statistics about the grouping results.
+    """Log a detailed summary of :func:`build_group_catalog`'s results:
+    parameters used, algorithm timing, object/group multiplicity
+    distribution, group-size (diameter) distribution, and the largest
+    groups found.
+
+    Also logs a warning if more than 2 groups exceed a hardcoded 40'
+    diameter threshold, since very large groups can produce
+    problematic (oversized) mosaics downstream.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog with ``GROUP_NAME``, ``GROUP_MULT``, ``GROUP_DIAMETER``
+        columns, as produced by :func:`build_group_catalog`.
+    params : :class:`Params`
+        Algorithm parameters used for this run, for the summary header.
+    links : :class:`int`
+        Total number of pairwise links formed during linking.
+    n_preclusters : :class:`int`
+        Number of spherical preclusters found in Step 1.
+    timing : :class:`dict`
+        Keys ``'precluster'``, ``'linking'``, ``'aggregate'`` -> elapsed
+        seconds for each stage.
+
+    Returns
+    -------
+    None
 
     """
 
@@ -723,26 +1193,111 @@ def build_group_catalog(
     mp=1, contain=True, contain_margin=0.75, merge_centers=True,
     merge_sep_arcsec=52.0, contain_search_arcmin=30.0,
     min_group_diam_arcsec=30.0, manual_merge_pairs=None, name_column="OBJNAME"):
-    """
-    Build galaxy group catalog with hybrid anisotropic linking.
+    """Build the galaxy group catalog via spherical preclustering
+    followed by grid-based, hybrid anisotropic linking, per
+    `CLAUDE.md`'s "Galaxy group finding via spherical clustering".
+
+    Six steps: (1) coarse spherical preclustering via
+    ``pydl.pydlutils.spheregroup.spheregroup`` (link length
+    ``sphere_link_arcmin``, default ``dmax``) to cheaply bucket objects
+    into candidate clusters; (2) within each multi-member precluster,
+    fine-grained pairwise linking (:func:`process_cluster`/
+    :func:`should_link`, optionally parallelized across ``mp``
+    processes), accumulated into a :class:`DSU`; (3) apply any
+    ``manual_merge_pairs`` by object name; (4) if ``contain``, merge
+    provisional groups whose members' ellipses overlap but were missed
+    by step 2 for exceeding ``dmax`` (:func:`_merge_overlapping_groups`);
+    (5) if ``merge_centers``, merge any remaining provisional groups
+    whose *centers* land within ``merge_sep_arcsec`` of each other (a
+    second `spheregroup` pass on the group centers, catching residual
+    duplicate/near-duplicate groups); (6) compute final group centers
+    (diameter-weighted Cartesian mean), diameters (max member extent
+    from center, floored at ``min_group_diam_arcsec``), and primary
+    flag (largest-diameter member), then annotate ``cat`` with the
+    ``GROUP_*`` columns and log a statistics summary
+    (:func:`report_group_statistics`).
 
     Parameters
     ----------
-    cat : Table
-        Input catalog (must have RA, DEC, DIAM columns; BA, PA optional)
-    mfac : float
-        Link multiplier for small-small pairs
-    dmin, dmax : float
-        Min/max link distances (degrees)
-    mp : int
-        Number of parallel processes
-    manual_merge_pairs : List[Tuple[str, str]]
-        Pairs of object names to manually merge
+    cat : :class:`~astropy.table.Table`
+        Input catalog; must have ``RA``, ``DEC``, ``DIAM`` columns
+        (``BA``, ``PA`` optional -- objects without them are treated as
+        circular).
+    mfac : :class:`float`
+        Link multiplier for small-small pairs (see
+        :meth:`State.pair_threshold`).
+    dmin, dmax : :class:`float`
+        Minimum/maximum link distance, degrees. ``dmax`` also sets the
+        default spherical-preclustering link length and grid cell size
+        if ``sphere_link_arcmin``/``grid_cell_arcmin`` aren't given.
+    anisotropic : :class:`bool`
+        Passed to :class:`Params`; if False, always use isotropic
+        (circular) thresholds.
+    link_mode : {'off', 'anisotropic', 'hybrid', None}
+        Linking strategy; see :class:`Params` and
+        :meth:`State.pair_threshold`.
+    big_diam : :class:`float`
+        Diameter threshold (arcmin) for "big" objects in hybrid mode.
+    mfac_backbone : :class:`float`
+        Link multiplier for big-big pairs (hybrid mode).
+    mfac_sat : :class:`float`
+        Link multiplier for big-small pairs (hybrid mode).
+    k_floor : :class:`float`
+        Minimum circular-radius fraction floor for big-small pairs
+        (hybrid mode).
+    q_floor : :class:`float`
+        Minimum effective axis-ratio floor for anisotropic radii.
+    name_via : :class:`str`
+        If ``'radec'``, generate ``GROUP_NAME`` via
+        :func:`SGA.io.radec_to_groupname`; otherwise leave it empty.
+    sphere_link_arcmin : :class:`float`, optional
+        Link length, arcmin, for the initial spherical preclustering
+        (Step 1). Defaults to ``dmax`` (converted to arcmin).
+    grid_cell_arcmin : :class:`float`, optional
+        :class:`Grid` cell size, arcmin, for within-precluster neighbor
+        search (Step 2). Defaults to ``dmax`` (converted to arcmin).
+    mp : :class:`int`
+        Number of parallel processes for linking (Step 2) and overlap
+        merging (Step 4).
+    contain : :class:`bool`
+        If True, also link/merge pairs whose scaled ellipses overlap,
+        independent of the distance-threshold checks (Steps 2 and 4).
+    contain_margin : :class:`float`
+        Fractional ellipse-scaling margin used for the Step 2
+        containment/overlap checks (e.g. 0.75 = 75% expansion). Not
+        used by Step 4 (see the Notes in
+        :func:`_merge_overlapping_groups`).
+    merge_centers : :class:`bool`
+        If True, run Step 5 (merge groups whose centers are within
+        ``merge_sep_arcsec``).
+    merge_sep_arcsec : :class:`float`
+        Group-center merge separation, arcsec, for Step 5.
+    contain_search_arcmin : :class:`float`
+        Separation, arcmin, below which :func:`should_link` tries the
+        containment pre-check even for pairs that would otherwise fail
+        the distance/threshold checks.
+    min_group_diam_arcsec : :class:`float`
+        Minimum group diameter floor, arcsec, applied in Step 6.
+    manual_merge_pairs : :class:`list` of :class:`tuple` of :class:`str`
+        Pairs of ``name_column`` values to force-merge into the same
+        group (Step 3), regardless of separation/geometry.
+    name_column : :class:`str`
+        Column in ``cat`` used to resolve ``manual_merge_pairs`` names
+        to row indices.
 
     Returns
     -------
-    Table
-        Input catalog with added GROUP_* columns
+    :class:`~astropy.table.Table`
+        ``cat``, updated in place (and returned) with ``GROUP_NAME``,
+        ``GROUP_MULT``, ``GROUP_PRIMARY``, ``GROUP_RA``, ``GROUP_DEC``,
+        ``GROUP_DIAMETER`` columns.
+
+    Raises
+    ------
+    ValueError
+        If ``cat`` is missing ``RA``/``DEC``/``DIAM``, or if
+        ``link_mode`` is not one of ``'off'``, ``'anisotropic'``,
+        ``'hybrid'``, or None.
 
     """
     t0 = time.time()
@@ -947,7 +1502,23 @@ def build_group_catalog(
         names = [''] * state.n
 
     def add(name, data, dtype=None):
-        """Add column with proper dtype and ensure 1D shape."""
+        """Add or replace a 1D column on the enclosing ``cat``, casting
+        to ``dtype`` and squeezing out any extraneous dimensions.
+
+        Parameters
+        ----------
+        name : :class:`str`
+            Column name.
+        data : array-like
+            Column data.
+        dtype : optional
+            Dtype to cast ``data`` to; if None, inferred.
+
+        Returns
+        -------
+        None
+
+        """
         if dtype is not None:
             arr = np.asarray(data, dtype=dtype)
         else:
@@ -990,10 +1561,26 @@ def build_group_catalog(
 # ============================================================================
 
 def make_singleton_group(cat):
-    """
-    Create singleton groups (one object per group).
+    """Annotate a catalog with trivial one-object-per-group ``GROUP_*``
+    columns (each object is its own primary, single-member group).
 
-    Ensures data model matches build_group_catalog output for safe vstacking.
+    Produces the exact same ``GROUP_*`` column set/dtypes as
+    :func:`build_group_catalog`, so tables processed either way (e.g.
+    a small isolated subsample vs. the full grouped catalog) can be
+    safely ``vstack``ed together.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Input catalog; needs ``RA``, ``DEC``, ``DIAM`` columns.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``cat``, updated in place (and returned) with ``GROUP_NAME``
+        (from :func:`SGA.io.radec_to_groupname`), ``GROUP_MULT`` (all
+        1), ``GROUP_PRIMARY`` (all True), ``GROUP_RA``/``GROUP_DEC``
+        (= ``RA``/``DEC``), ``GROUP_DIAMETER`` (= ``DIAM``).
 
     """
     n = len(cat)
@@ -1003,7 +1590,10 @@ def make_singleton_group(cat):
 
     # Helper function to add/replace columns with proper dtype and shape
     def add_column(name, data, dtype=None):
-        """Add column ensuring 1D shape."""
+        """Add or replace a 1D column on the enclosing ``cat``; see
+        :func:`build_group_catalog`'s identical nested ``add`` helper.
+
+        """
         if dtype is not None:
             arr = np.asarray(data, dtype=dtype)
         else:
@@ -1039,21 +1629,29 @@ def qa(*args, **kwargs):
 
 
 def set_overlap_bit(cat, SAMPLE):
-    """
-    Flag ellipse-overlap within each group by setting SAMPLE['OVERLAP'].
+    """Flag ellipse-overlap within each group by setting
+    ``cat['SAMPLE']``'s ``OVERLAP`` bit.
 
-    Assumes `cat` has columns: GROUP_NAME, GROUP_MULT, RA, DEC, DIAM (arcmin),
-    BA, PA (deg, astronomical).
-
-    Modifies `cat['SAMPLE']` in place by OR'ing the OVERLAP bit for members that
-    overlap at least one other member in their group.
+    For each group with more than one member (``GROUP_MULT > 1``),
+    pairwise-checks every member's (unscaled) ellipse against every
+    other member's (via :func:`ellipses_overlap`, with a cheap
+    circular-radius pre-filter), and sets the ``OVERLAP`` bit for every
+    member involved in at least one overlapping pair. Modifies
+    ``cat['SAMPLE']`` in place.
 
     Parameters
     ----------
-    cat : astropy.table.Table
-        Input catalog, modified in place.
-    SAMPLE : dict
-        Bitmask dictionary that includes key 'OVERLAP'.
+    cat : :class:`~astropy.table.Table`
+        Input catalog, modified in place; needs ``GROUP_NAME``,
+        ``GROUP_MULT``, ``RA``, ``DEC``, ``DIAM`` (arcmin), and
+        optionally ``BA``, ``PA`` (degrees, astronomical convention --
+        objects without them are treated as circular).
+    SAMPLE : :class:`dict`
+        Bitmask dictionary that includes key ``'OVERLAP'``.
+
+    Returns
+    -------
+    None
 
     """
     OVERLAP_BIT = SAMPLE['OVERLAP']
