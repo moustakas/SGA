@@ -1,23 +1,44 @@
 #!/usr/bin/env python3
 
-"""Two-stage fast calibration + inference for galaxy isophotal radii to
-produce the "best" estimate of R_r(26) using multi-band/threshold
-measurements.
+"""Two-stage calibration + inference pipeline for galaxy isophotal radii,
+producing the "best" estimate of R_r(26) (and hence D26) from
+multi-band, multi-threshold isophotal radius measurements. This is the
+procedure that produced the SGA-2025 D26 diameters (via
+``SGA.SGA.SGA_diameter`` -> ``SGA.calibrate.infer_best_r26`` in
+production).
 
-Data model (Astropy Table expected):
-  Columns: R{TH}_{X}, R{TH}_ERR_{X}  for TH in {24,25,26}, X in {G,R,I,Z}
+Data model (astropy Table expected, read from the ``ELLIPSE`` extension):
+  Columns: R{TH}_{X}, R{TH}_ERR_{X}  for TH in {23,24,25,26}, X in {G,R,I,Z}
   Plus:    SMA_MOMENT  (no per-object error available)
   Units:   plain floats (no astropy.units). Missing values are encoded as 0.0.
 
-Stage 1 (calibration): fit errors-in-variables linear mappings that
-align each channel to the latent target y = log(R_r(26)). Uses SciPy
-ODR with robust sanitation and fallbacks. Learns per-channel extra
-scatter tau and, when needed, a default log-uncertainty for channels
-without per-object errors (e.g., SMA_MOMENT). Writes ASCII TSV.
+Stage 1 (calibrate -> SGA.calibrate.calibrate_from_table): for each
+channel, fits a robust least-squares bisector regression (Isobe et al.
+1990 -- the average of the y-on-x and x-on-y ordinary least-squares
+slopes, in log-space) mapping that channel's isophotal radius onto the
+R26_R anchor, log(R26) = a + b*log(R_channel), with iterative
+sigma-clipping on the orthogonal residuals to reject outliers. Learns
+each channel's intrinsic scatter (tau) and, for channels without
+per-object errors (e.g. SMA_MOMENT), a default log-uncertainty. Writes
+coefficients to an ASCII TSV file (SGA.calibrate.save_calibration).
 
-Stage 2 (inference): for any table, apply calibration and combine all
-available channels via inverse-variance weighting in log-space to
-return R_r(26), then convert to D26 (diameter, arcmin).
+Stage 2 (infer -> SGA.calibrate.infer_best_r26): for any table, applies
+the calibration and combines all available channels at the deepest
+available isophotal threshold via inverse-variance weighting in
+log-space to return R_r(26), then converts to D26 (diameter, arcmin).
+Not run standalone via this script in production -- SGA_diameter calls
+infer_best_r26 directly in-process.
+
+Covariates: both calibrate_from_table and infer_best_r26 accept
+covariates/covariate_names parameters, scaffolding a possible future
+extension of the model to log(R26) = a + b*log(R_channel) + c.covariates
+(e.g. an inclination- or surface-brightness-dependent correction term).
+This extension is not yet implemented in calibrate_from_table (see its
+docstring). No covariates have been used in any SGA-2025 production
+calibration to date -- neither production call site (this script, nor
+SGA_diameter) passes them, and every channel in the shipped
+py/SGA/data/SGA2025/r26-calibration-coeff.tsv has empty
+covar_names/c_json.
 
 Public API (import these):
   - calibrate_from_table(table, calib_path, *, covariates=None, covariate_names=None)
@@ -28,11 +49,19 @@ CLI (optional):
   python SGA2025-calibrate-r26 calibrate  input.fits  r26_calibration.tsv
   python SGA2025-calibrate-r26 infer      input.fits  r26_calibration.tsv  output.fits
 
-Author: ChatGPT (SGA-2025 helper)
+Production provenance: the coefficients shipped at
+py/SGA/data/SGA2025/r26-calibration-coeff.tsv were produced by running
+the ``calibrate`` command below against two successive parent-sample
+versions, both writing to the same output filename (save_calibration
+overwrites on each write, so the v0.22 run's coefficients are the ones
+actually shipped):
 
+  SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration-coeff.tsv
+  SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.22-dr11-south.fits r26-calibration-coeff.tsv
 
-SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration-coeff.tsv
-SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.22-dr11-south.fits r26-calibration-coeff.tsv
+Originally scaffolded with ChatGPT assistance; the description above
+reflects the pipeline as actually implemented and verified for
+SGA-2025.
 
 """
 import sys
