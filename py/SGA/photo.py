@@ -4,6 +4,19 @@ SGA.photo
 
 Utilities for performing simple photometry.
 
+Notes
+-----
+Not currently wired into any driver script (no callers in ``bin/`` or
+``archive/``), and :func:`photo_one` (the per-object worker called by
+:func:`do_photo`) cannot currently run: it imports ``from
+SGA.find_galaxy import find_galaxy``, but ``py/SGA/find_galaxy.py``
+was deliberately removed (commit ``5f9c698``, "remove
+mge.find_galaxy") in favor of a different geometry-fitting approach
+now used in :mod:`SGA.SGA`/:mod:`SGA.ellipse`; this import was never
+updated here. This module appears to be an earlier, simpler
+photometry prototype, superseded by the ellipse-fitting pipeline but
+left in place.
+
 """
 import pdb
 import os, time, sys
@@ -18,6 +31,45 @@ from SGA.logger import log
 
 
 def photo_datamodel(out, ra, dec, diam, ba, pa, bands=['g', 'r', 'i', 'z']):
+    """Initialize the simple-photometry output row for one object,
+    adding the ``SGANAME`` column and per-band/per-stage placeholder
+    columns (all filled with sentinel values, to be overwritten by
+    :func:`photo_one`).
+
+    Parameters
+    ----------
+    out : :class:`astropy.table.Table`
+        Single-row input table (typically a subset of the parent
+        catalog's columns for one object) to extend in place.
+    ra : :class:`float`
+        Right ascension, in decimal degrees.
+    dec : :class:`float`
+        Declination, in decimal degrees.
+    diam : array-like
+        Initial diameter estimate(s), in arcsec; only ``diam[0]`` is
+        used, stored as ``DIAM_INIT``.
+    ba : array-like
+        Initial axis-ratio estimate(s); only ``ba[0]`` is used.
+    pa : array-like
+        Initial position-angle estimate(s), in degrees CCW from the
+        y-axis; only ``pa[0]`` is used.
+    bands : :class:`list`
+        Bandpasses to add placeholder photometry columns for.
+
+    Returns
+    -------
+    :class:`astropy.table.Table`
+        `out`, extended in place and also returned for convenience,
+        with ``SGANAME``, ``RA_PHOT``/``DEC_PHOT``, ``IN_GAIA``,
+        ``NODATA``, ``CENTERMASKED``, ``MGE_FAIL``, ``SEP``,
+        ``DIAM_INIT``/``BA_INIT``/``PA_INIT``,
+        ``DIAM_PHOT``/``BA_PHOT``/``PA_PHOT``, and per-band
+        ``FLUX_{INIT,PHOT}_{BAND}``, ``FLUX_{INIT,PHOT}_ERR_{BAND}``,
+        ``GINI_{INIT,PHOT}_{BAND}``, ``FRACMASK_{INIT,PHOT}_{BAND}``
+        columns, all initialized to ``-99.`` (or False, for the
+        boolean flag columns).
+
+    """
     out.add_column(sga2025_name(ra, dec, unixsafe=False)[0], name='SGANAME', index=0)
     for col in ['RA', 'DEC']:
         out[f'{col}_PHOT'] = [-99.]
@@ -46,7 +98,71 @@ def photo_datamodel(out, ra, dec, diam, ba, pa, bands=['g', 'r', 'i', 'z']):
 def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
                      diam, ba, pa, xyinit, wimg, wmask, wcs, xyphot=None,
                      xypeak=None, render_jpeg=True):
+    """Build a single-panel QA figure for one object's simple
+    photometry: the (masked) cutout image with the initial ellipse
+    geometry overlaid in yellow and, if photometry succeeded, the
+    derived (MGE-based) geometry overlaid in cyan.
 
+    Parameters
+    ----------
+    qafile : :class:`str`
+        Output QA PNG path.
+    jpgfile : :class:`str`
+        Path to the pre-rendered color JPEG cutout (used when
+        `render_jpeg` is True).
+    out : :class:`astropy.table.Table`
+        Single-row output table (as built/updated by
+        :func:`photo_datamodel`/:func:`photo_one`), used for the title
+        text (``SGANAME``, ``OBJNAME``) and, if `xyphot` is given, the
+        derived ``RA_PHOT``/``DEC_PHOT``/``DIAM_PHOT``/``BA_PHOT``/
+        ``PA_PHOT`` columns.
+    ra, dec : :class:`float`
+        Object coordinates, in decimal degrees, for the title text.
+    pixscale : :class:`float`
+        Pixel scale, in arcsec/pixel.
+    width : :class:`int`
+        Cutout width/height, in pixels (square).
+    diam, ba, pa : array-like
+        Initial ellipse geometry (diameter in arcsec, axis ratio,
+        position angle in degrees); only element 0 of each is used.
+    xyinit : :class:`tuple`
+        Initial (x, y) pixel position for the yellow ellipse.
+    wimg : :class:`numpy.ndarray`
+        Inverse-variance-weighted mean image, used only in the
+        non-JPEG display branch (see Notes).
+    wmask : :class:`numpy.ndarray`
+        Boolean mask (True = masked), applied to the JPEG image before
+        display.
+    wcs : :class:`astropy.wcs.WCS`
+        WCS of the cutout, used to project `out`'s derived RA/Dec to
+        pixel coordinates when `xyphot` is given.
+    xyphot : :class:`tuple`, optional
+        If given, also overplot the derived (cyan) ellipse using
+        `out`'s ``DIAM_PHOT``/``BA_PHOT``/``PA_PHOT`` columns.
+    xypeak : :class:`tuple`, optional
+        Unused (see Notes).
+    render_jpeg : :class:`bool`
+        If True, display the pre-rendered `jpgfile` (with `wmask`
+        applied); if False, display a log-stretched `wimg` directly
+        (see Notes for a bug in this branch).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    `xypeak` is accepted but never referenced in the function body --
+    dead parameter. The ``render_jpeg=False`` branch references
+    `xpeak`/`ypeak` (no leading ``x``/``y`` prefix mismatch -- these
+    exact names) which are never defined anywhere in this function
+    (not parameters, not local variables) -- calling this function
+    with ``render_jpeg=False`` always raises ``NameError``. In
+    practice this is currently harmless: the sole caller
+    (:func:`photo_one`) always calls with the default
+    ``render_jpeg=True``, so the broken branch is never exercised.
+
+    """
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
     from SGA.qa import overplot_ellipse
@@ -107,13 +223,86 @@ def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
 
 
 def _photo_one(args):
+    """Unpack a single argument tuple and call :func:`photo_one` --
+    the top-level callable required by ``multiprocessing.Pool.map``.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments to forward to :func:`photo_one`.
+
+    Returns
+    -------
+    Return value of :func:`photo_one`.
+
+    """
     return photo_one(*args)
 
 
 def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
               bands=['g', 'r', 'i', 'z'], box_arcsec=5.,
               verbose=False, qaplot=True):
-    """Perform photometry on a single cutout.
+    """Perform simple (non-ellipse-fitting) aperture photometry on a
+    single multiband cutout: mask Gaia/Tycho stars, locate the galaxy
+    center/geometry via :func:`SGA.find_galaxy.find_galaxy` (an MGE
+    fit), then measure aperture flux, masked-pixel fraction, and Gini
+    coefficient per band in both the initial and derived elliptical
+    apertures.
+
+    Parameters
+    ----------
+    fitsfile : :class:`str`
+        Path to the multiband (image + inverse-variance) FITS cutout.
+    jpgfile : :class:`str`
+        Path to the pre-rendered color JPEG cutout, for QA.
+    photfile : :class:`str`
+        Output photometry FITS path.
+    qafile : :class:`str`
+        Output QA PNG path.
+    obj : :class:`astropy.table.Row`
+        Single-object catalog row with ``RA``, ``DEC``, ``OBJNAME``,
+        and the geometry columns consumed by
+        :func:`SGA.geometry.choose_geometry`.
+    survey : :class:`legacypipe.survey.LegacySurveyData`
+        Survey object used to look up Gaia/Tycho reference sources via
+        ``legacypipe.reference.get_reference_sources``.
+    bands : :class:`list`
+        Bandpasses to measure.
+    box_arcsec : :class:`float`
+        Side length of a small box (centered on the initial position)
+        used to test whether the object's center is fully masked.
+    verbose : :class:`bool`
+        Unused (see Notes).
+    qaplot : :class:`bool`
+        If True, write a QA figure via :func:`qaplot_photo_one` after
+        a successful measurement.
+
+    Returns
+    -------
+    None
+        Writes `photfile` (and, depending on `qaplot`/failure mode,
+        `qafile`) as a side effect; returns early (without raising) if
+        the object's center is fully masked or the MGE geometry fit
+        fails, in both cases still writing `photfile` with the
+        appropriate ``CENTERMASKED``/``MGE_FAIL`` flag set.
+
+    Raises
+    ------
+    ValueError
+        If `fitsfile` is missing its inverse-variance extension, or if
+        the WCS solution for the initial position is invalid (NaN).
+
+    Notes
+    -----
+    Cannot currently run: imports ``from SGA.find_galaxy import
+    find_galaxy``, but that module was removed from the package (see
+    this module's docstring). `verbose` is accepted but never
+    referenced in the function body. The center-masking fallback tries
+    progressively looser masks (drop the faint-Gaia mask, then drop
+    the bright-Gaia mask too) before giving up and flagging
+    ``CENTERMASKED`` -- so a genuinely star-crowded field can still be
+    measured with looser masking, which is not obviously indicated in
+    the output.
 
     """
     from astropy.io import fits
@@ -132,14 +321,49 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
 
     def get_error(ivar):
+        """Safely convert an inverse-variance image to a 1-sigma error
+        image, leaving non-positive pixels at their original
+        (non-positive) value rather than dividing by zero.
+
+        Parameters
+        ----------
+        ivar : :class:`numpy.ndarray`
+            Inverse-variance image.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            Error image, same shape as `ivar`.
+
+        """
         error = ivar.copy()
         I = error > 0.
         error[I] = 1. / np.sqrt(error[I])
         return error
 
     def write_photfile(out, photfile):
-        # with MPI, astropy's .write in 7.0.1 hits this bug--
-        # https://github.com/astropy/astropy/issues/15350
+        """Atomically write a single-row photometry table to disk, via
+        a temp-file-then-rename, using :mod:`fitsio` instead of
+        Astropy's writer (see Notes).
+
+        Parameters
+        ----------
+        out : :class:`astropy.table.Table`
+            Single-row output table to write.
+        photfile : :class:`str`
+            Destination FITS path.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Uses ``fitsio.write`` rather than ``out.write`` because, under
+        MPI, Astropy 7.0.1's table writer hits
+        https://github.com/astropy/astropy/issues/15350 .
+
+        """
         #out.write(photfile, overwrite=True)
         fitsio.write(photfile+'.tmp', out.as_array(), clobber=True)
         os.rename(photfile+'.tmp', photfile)
@@ -362,20 +586,78 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
                          xypeak=xypeak)
 
 def _read_one_photfile(args):
+    """Unpack a single argument tuple and call :func:`read_one_photfile`
+    -- the top-level callable required by ``multiprocessing.Pool.map``.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments to forward to :func:`read_one_photfile`.
+
+    Returns
+    -------
+    Return value of :func:`read_one_photfile`.
+
+    """
     return read_one_photfile(*args)
 
 
 def read_one_photfile(photfile):
-    #tt = Table(fitsio.read(photfile))
-    #tt.rename_column('EXCEPTION', 'MGE_FAIL')
-    #fitsio.write(photfile, tt.as_array(), clobber=True)
-    #print(f'Wrote {photfile}')
-    #return Table()
+    """Read a single per-object photometry FITS file written by
+    :func:`photo_one` into a table.
+
+    Parameters
+    ----------
+    photfile : :class:`str`
+        Path to the photometry FITS file.
+
+    Returns
+    -------
+    :class:`astropy.table.Table`
+        Single-row photometry table.
+
+    """
     return Table(fitsio.read(photfile))
 
 
 def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
                  photo_version='v1.0'):
+    """Gather the individual per-object photometry FITS files written
+    by :func:`do_photo`/:func:`photo_one` into one merged catalog.
+
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Parent catalog previously passed to :func:`do_photo`, used
+        (via :func:`SGA.cutouts.cutouts_plan`) to recover the same set
+        of per-object photometry filenames.
+    mp : :class:`int`
+        Number of multiprocessing workers used to read the individual
+        files in parallel.
+    region : :class:`str`
+        Imaging region (e.g. ``'dr9-north'``), used only in the output
+        catalog filename.
+    cutoutdir : :class:`str`
+        Unused here except as passed through to
+        :func:`SGA.cutouts.cutouts_plan` (not itself referenced for
+        gathering).
+    photodir : :class:`str`
+        Directory containing the per-object photometry FITS files.
+    photo_version : :class:`str`
+        Version string, used in the output catalog filename.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Refuses to overwrite an existing output catalog -- if
+    ``{SGA_DIR}/parent/photo/parent-photo-{region}-{photo_version}.fits``
+    already exists, logs a warning and returns without gathering
+    anything (the caller must remove the file by hand first).
+
+    """
     from SGA.SGA import sga_dir
 
     catdir = os.path.join(sga_dir(), 'parent', 'photo')
@@ -408,22 +690,60 @@ def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
 def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
              region='dr9-north', cutoutdir='.', photodir='.',
              photo_version='v1.0', overwrite=False, verbose=False):
-    """Wrapper to carry out simple photometry on all objects in the
-    input catalog.
+    """MPI/multiprocessing driver: plan cutout/photometry file paths
+    for `cat` via :func:`SGA.cutouts.cutouts_plan`, distribute objects
+    across MPI ranks, then call :func:`photo_one` (in parallel, if
+    `mp` > 1) on this rank's share.
 
-    'dr11-south'
-        # photo-version=v1.0
-        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.) # N=4,434
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Parent catalog of objects to process.
+    comm : :class:`mpi4py.MPI.Intracomm`, optional
+        MPI communicator. If None, runs single-rank (``rank=0,
+        size=1``).
+    mp : :class:`int`
+        Number of multiprocessing workers per rank.
+    bands : :class:`list`
+        Bandpasses to measure, passed through to :func:`photo_one`.
+    region : :class:`str`
+        Imaging region (e.g. ``'dr9-north'``), used to set the Legacy
+        Survey data directory and select the ``RUNS`` survey.
+    cutoutdir : :class:`str`
+        Directory containing the multiband FITS/JPEG cutouts.
+    photodir : :class:`str`
+        Output directory for per-object photometry FITS/QA files.
+    photo_version : :class:`str`
+        Unused (see Notes).
+    overwrite : :class:`bool`
+        Passed through to :func:`SGA.cutouts.cutouts_plan`.
+    verbose : :class:`bool`
+        Passed through to :func:`SGA.cutouts.cutouts_plan`.
 
-        # photo-version=v1.1
-        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 10.) * (diam < 12.) # N=434,092
+    Returns
+    -------
+    None
 
-    'dr9-north'
-        # photo-version=v1.0
-        #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
+    Notes
+    -----
+    `photo_version` is accepted but never referenced in the function
+    body -- dead parameter (unlike :func:`gather_photo`, which does
+    use its own `photo_version` argument). Reference threshold cuts
+    used for past photometry versions, preserved here for provenance::
 
-        # photo-version=v1.1
-        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676
+        'dr11-south'
+            # photo-version=v1.0
+            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.) # N=4,434
+
+            # photo-version=v1.1
+            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 10.) * (diam < 12.) # N=434,092
+
+        'dr9-north'
+            # photo-version=v1.0
+            #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
+
+            # photo-version=v1.1
+            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676
 
     """
     if comm is None:
