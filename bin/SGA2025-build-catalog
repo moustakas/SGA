@@ -52,6 +52,21 @@ already covers cases where a second measurement exists to cross-check
 against; both are intended as a signal for targeted visual inspection, not
 an automatic correction.
 
+Z_COSMO (peculiar-velocity-corrected redshift)
+-----------------------------------------------
+For every object with Z_IVAR > 0, the adopted (heliocentric) Z is converted
+to the CMB frame using the standard dipole (Planck 2018: 369.82 km/s toward
+RA=167.942, Dec=-6.944 J2000). For v_cmb < 20,000 km/s (roughly the 2M++
+reconstruction boundary), pvhub (https://github.com/KSaid-1/pvhub; optional
+dependency, see etc/README.md) predicts the peculiar velocity from each
+available flow-field reconstruction; Z_COSMO is the CMB-frame redshift with
+the mean predicted peculiar velocity removed, and Z_COSMO_IVAR combines the
+model-to-model scatter with the measured redshift error in quadrature.
+Beyond 20,000 km/s -- outside the reconstructions' domain -- Z_COSMO is just
+the CMB-frame redshift, with Z_COSMO_IVAR carried over unchanged from Z_IVAR.
+If pvhub is not installed, Z_COSMO falls back to the CMB-frame redshift
+(no peculiar-velocity correction) for all objects.
+
 Sentinels
 ---------
   Redshifts / IVARs : 0.   (Z_IVAR=0 => no measurement; Z=0 means either no
@@ -110,7 +125,13 @@ from pathlib import Path
 import numpy as np
 import fitsio
 from astropy.table import Table, Column, vstack
+from astropy.coordinates import SkyCoord
 import astropy.units as u
+
+try:
+    from pvhub import get_models  # optional; see etc/README.md
+except ImportError:
+    get_models = None
 
 from SGA.util import C_LIGHT
 from SGA.SGA import read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS
@@ -130,6 +151,17 @@ Z_FLAG_NED_UNRESOLVED = 0x04             # sole measurement is NED; NED_FLAG Z_U
 # Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED in SGA2025-ned-merge.
 NED_FLAG_Z_SUSPECT    = 0x08
 NED_FLAG_Z_UNRESOLVED = 0x10
+
+# CMB dipole apex (Planck 2018), used to convert the adopted (heliocentric) Z
+# to a CMB-frame redshift before querying pvhub -- pvhub's reconstructions
+# (and their 2M++ coverage boundary) are defined in the CMB frame.
+CMB_APEX_RA_DEG     = 167.942
+CMB_APEX_DEC_DEG    = -6.944
+CMB_APEX_V_KMS      = 369.82
+# Objects at or beyond this CMB-frame velocity are outside/at the edge of the
+# pvhub reconstructions' domain; Z_COSMO falls back to the CMB-frame redshift
+# with no peculiar-velocity correction (Z_COSMO_IVAR carried over from Z_IVAR).
+PVHUB_VCMB_MAX_KMS  = 20000.
 
 # NED_CARRY output columns that use 0. as their missing sentinel because they
 # have an IVAR companion column (IVAR=0 signals no measurement).
@@ -328,6 +360,8 @@ COL_ORDER = [
     #'NED_TYPE', 'NED_MORPH',
     #'NED_FLAG',
     #'NED_SOURCE', 'NED_BYNAME_SEP',
+    # --- Peculiar-velocity-corrected redshift (pvhub) ---
+    'Z_COSMO', 'Z_COSMO_IVAR',
     # --- Group finding ---
     'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
     'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
@@ -509,6 +543,17 @@ LVD_Z_COLS = [
     ('Z_IVAR_LVD', np.float64, None),
 ]
 
+# Peculiar-velocity-corrected ("cosmological") redshift, from pvhub. Z_COSMO
+# is the CMB-frame Z with the mean pvhub-predicted peculiar velocity (across
+# all available flow-field reconstructions) removed, for objects with
+# v_cmb < PVHUB_VCMB_MAX_KMS; beyond that (outside the reconstructions'
+# domain) Z_COSMO is just the CMB-frame redshift, and Z_COSMO_IVAR is carried
+# over unchanged from Z_IVAR. Zero sentinel (Z_COSMO_IVAR=0) when Z_IVAR=0.
+COSMO_COLS = [
+    ('Z_COSMO',      np.float64, None),
+    ('Z_COSMO_IVAR', np.float64, None),
+]
+
 # Initial geometry columns restored from the parent/nocuts catalog (v0.10).
 INIT_COLS = [
     ('RA_INIT',       np.float64, u.degree),
@@ -590,6 +635,19 @@ def _angular_sep_arcsec(ra1, dec1, ra2, dec2):
     """Small-angle angular separation in arcsec; ra2/dec2 may be arrays."""
     cos_dec = np.cos(np.radians(dec1))
     return np.sqrt(((ra2 - ra1) * cos_dec)**2 + (dec2 - dec1)**2) * 3600.
+
+
+def _helio_to_cmb_z(ra, dec, z_helio):
+    """Convert heliocentric redshift to the CMB frame (non-relativistic; the
+    solar velocity relative to the CMB, ~370 km/s, is negligible relative to
+    c at the redshifts this catalog covers).
+
+    ra/dec: degrees (float or array). z_helio: dimensionless (float or array).
+    """
+    apex = SkyCoord(ra=CMB_APEX_RA_DEG * u.degree, dec=CMB_APEX_DEC_DEG * u.degree)
+    coord = SkyCoord(ra=np.asarray(ra) * u.degree, dec=np.asarray(dec) * u.degree)
+    cos_theta = np.cos(coord.separation(apex).radian)
+    return z_helio + CMB_APEX_V_KMS * cos_theta / C_LIGHT
 
 
 def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
@@ -1037,6 +1095,75 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]  = 'NED'
 
+    # --- Peculiar-velocity-corrected ("cosmological") redshift, via pvhub -
+    cosmo_arrs = {
+        'Z_COSMO':      np.zeros(n, np.float64),
+        'Z_COSMO_IVAR': np.zeros(n, np.float64),
+    }
+    has_z = adopted_arrs['Z_IVAR'] > 0.
+    n_has_z = int(np.sum(has_z))
+    if n_has_z:
+        ra_z    = np.array(beta['RA'])[has_z]
+        dec_z   = np.array(beta['DEC'])[has_z]
+        z_z     = adopted_arrs['Z'][has_z]
+        zivar_z = adopted_arrs['Z_IVAR'][has_z]
+
+        zcmb_z = _helio_to_cmb_z(ra_z, dec_z, z_z)
+        vcmb_z = C_LIGHT * zcmb_z
+
+        # Default (also the fallback beyond pvhub's domain): CMB-frame
+        # redshift, no flow-field peculiar-velocity correction applied.
+        zcosmo_z      = zcmb_z.copy()
+        zcosmo_ivar_z = zivar_z.copy()
+
+        in_pvhub = vcmb_z < PVHUB_VCMB_MAX_KMS
+        n_pvhub  = int(np.sum(in_pvhub))
+        if n_pvhub and get_models is not None:
+            ra_pv    = ra_z[in_pvhub]
+            dec_pv   = dec_z[in_pvhub]
+            zcmb_pv  = zcmb_z[in_pvhub]
+            zivar_pv = zivar_z[in_pvhub]
+
+            pv_models = []
+            for model_class in get_models():
+                try:
+                    model = model_class()
+                    pv = np.asarray(model.calculate_pv(ra_pv, dec_pv, zcmb_pv), dtype=np.float64)
+                except Exception as e:
+                    log.warning(f'  pvhub model {model_class.__name__} failed, skipping: {e}')
+                    continue
+                pv_models.append(pv)
+
+            if pv_models:
+                pv_stack = np.vstack(pv_models)  # (n_models, n_pvhub)
+                n_valid  = np.sum(np.isfinite(pv_stack), axis=0)
+                with np.errstate(invalid='ignore'):
+                    pv_mean = np.nanmean(pv_stack, axis=0)
+                    pv_std  = np.nanstd(pv_stack, axis=0)
+                pv_std[n_valid < 2] = 0.  # no model-scatter estimate from <2 models
+
+                have_pv = np.isfinite(pv_mean)
+                zcosmo_pv = zcmb_pv.copy()
+                zcosmo_pv[have_pv] = (1. + zcmb_pv[have_pv]) / (1. + pv_mean[have_pv] / C_LIGHT) - 1.
+
+                zerr_meas  = 1. / np.sqrt(zivar_pv)
+                zerr_model = pv_std / C_LIGHT
+                zerr_total = np.sqrt(zerr_meas**2 + zerr_model**2)
+                zcosmo_ivar_pv = np.where(have_pv, 1. / zerr_total**2, zivar_pv)
+
+                zcosmo_z[in_pvhub]      = zcosmo_pv
+                zcosmo_ivar_z[in_pvhub] = zcosmo_ivar_pv
+        elif n_pvhub and get_models is None:
+            log.warning(f'  pvhub not installed -- Z_COSMO will carry the CMB-frame '
+                        f'redshift with no peculiar-velocity correction for '
+                        f'{n_pvhub:,d} objects with v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s '
+                        f'(see etc/README.md, "Optional: pvhub")')
+
+        cosmo_arrs['Z_COSMO'][has_z]      = zcosmo_z
+        cosmo_arrs['Z_COSMO_IVAR'][has_z] = zcosmo_ivar_z
+        log.info(f'  Z_COSMO: {n_has_z:,d}/{n:,d} objects with Z_IVAR>0, '
+                 f'{n_pvhub:,d} within pvhub domain (v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s)')
+
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
     crossids_col = ned_arrs.get('CROSSIDS')
     galaxy_arr   = np.full(n, '', dtype='U35')
@@ -1178,6 +1305,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # LVD redshifts
     for name, dtype, unit in LVD_Z_COLS:
         out.add_column(Column(lvd_z_arrs[name], name=name, unit=unit))
+
+    # Peculiar-velocity-corrected ("cosmological") redshift
+    for name, dtype, unit in COSMO_COLS:
+        out.add_column(Column(cosmo_arrs[name], name=name, unit=unit))
 
     # Drop columns not wanted in the output
     for col in DROP_COLS:
