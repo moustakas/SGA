@@ -2,18 +2,27 @@
 """
 ned-crossids: Query the NED API for cross-IDs and basic data for SGA-2025 galaxies.
 
-Two modes:
+Three query types (--querytype):
 
-  --bypos (default): ConeSearchByPosition finds the nearest NED object within
-    --radius arcsec (default 5), then OverviewOfObject retrieves all basic
-    data including cross-IDs.  Output: ned-bypos-{region}.csv
+  overview (default): OverviewOfObject fiducial data for every galaxy in the
+    full SGA sample, one row per galaxy. Target resolution has two modes:
 
-  --byname: OverviewOfObject queried directly by SGA OBJNAME. Useful for
-    galaxies that fail the positional match due to coordinate offsets.
-    Output: ned-byname-{region}.csv
+      --bypos (default): ConeSearchByPosition finds the nearest NED object
+        within --radius arcsec (default 5), then OverviewOfObject retrieves
+        all basic data including cross-IDs.  Output: ned-bypos-{region}.csv
 
-Both outputs include one row per galaxy with all selected OverviewOfObject
-fields. Safe to restart: SGAIDs already present in the output file are skipped.
+      --byname: OverviewOfObject queried directly by SGA OBJNAME. Useful for
+        galaxies that fail the positional match due to coordinate offsets.
+        Output: ned-byname-{region}.csv
+
+  redshifts / distances: RedshiftsOfObject / DistancesOfObject for a
+    restricted --incat of galaxies (e.g. ones flagged with unreliable
+    default NED_Z/NED_DIST), queried directly by NED_NAME. Unlike overview,
+    NED returns *all* available measurements per object (not just the
+    fiducial one), so the output has one row per measurement, not per
+    galaxy. Output: ned-{querytype}-{incat basename}.csv
+
+Safe to restart: SGAIDs already present in the output file are skipped.
 
 Hiccup protection: NED VOTable responses declare their row count in a
 RECORDS_RETURNED parameter. If NED declares N > 0 rows but delivers 0, the
@@ -22,8 +31,9 @@ If the overview step succeeds in finding a NED name but returns no data, it is
 flagged ERROR='overview_failed' rather than being silently empty.
 
 Throughput with default settings (--maxconcurrent 10, --delay 0.1):
-  ~8 NED requests/s -> ~4 gal/s (bypos, 2 calls each) or ~8 gal/s (byname).
-  Run dr11-north and dr11-south in parallel on separate nodes.
+  ~8 NED requests/s -> ~4 gal/s (bypos, 2 calls each) or ~8 gal/s (byname,
+  redshifts, distances). Run dr11-north and dr11-south in parallel on
+  separate nodes.
 
 Examples
 --------
@@ -36,6 +46,11 @@ ned-crossids --region dr11-south --outdir /path/to/output
 ned-crossids --region dr11-south --outdir /path/to/output --byname
 ned-crossids --region dr11-north --outdir /path/to/output
 
+# Redshifts/distances for a restricted list of objects (SGAID + NED_NAME
+# columns, e.g. a filtered ned-bypos-dr11-south.csv):
+ned-crossids --querytype redshifts --incat bad-redshifts.csv --outdir /path/to/output
+ned-crossids --querytype distances --incat bad-redshifts.csv --outdir /path/to/output
+
 """
 import os
 import re
@@ -47,6 +62,7 @@ import numpy as np
 from io import BytesIO
 
 import aiohttp
+from astropy.table import Table
 from astropy.io.votable import parse_single_table
 
 from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS
@@ -94,6 +110,43 @@ OVERVIEW_COL_MAP = {
 OVERVIEW_FIELDS = ['CROSSIDS', 'N_CROSSIDS'] + list(OVERVIEW_COL_MAP.values())
 BYPOS_FIELDS    = ['SGAID', 'NED_NAME', 'SEPARATION_ARCSEC', 'NMATCHES'] + OVERVIEW_FIELDS + ['ERROR']
 BYNAME_FIELDS   = ['SGAID', 'OBJNAME'] + OVERVIEW_FIELDS + ['ERROR']
+
+# RedshiftsOfObject / DistancesOfObject VOTable FIELD ID -> output CSV column
+# name. Unlike OverviewOfObject these return all available measurements per
+# object (not just the fiducial one), so output is one row per measurement.
+REDSHIFT_COL_MAP = {
+    'row':           'ROW',
+    'z':             'NED_Z',
+    'unc_z':         'NED_Z_UNC',
+    'velocity':      'NED_CZ',
+    'velocity_unc':  'NED_CZ_UNC',
+    'z_technique':   'NED_Z_TECHNIQUE',
+    'z_method':      'NED_Z_METHOD',
+    'quality_flag':  'NED_Z_QUALITY',
+    'bandpass':      'NED_Z_BANDPASS',
+    'reference':     'NED_Z_REF',
+    'fiducial':      'NED_Z_FIDUCIAL',
+}
+DISTANCE_COL_MAP = {
+    'row':           'ROW',
+    'dist_mod':      'NED_DISTMOD',
+    'dist_mod_err':  'NED_DISTMOD_UNC',
+    'distance':      'NED_DIST',
+    'method':        'NED_DIST_METHOD',
+    'refcode':       'NED_DIST_REF',
+    'notes':         'NED_DIST_NOTES',
+    'SN_name':       'NED_DIST_SNNAME',
+    'def_redshift':  'NED_DIST_Z',
+    'def_H0':        'NED_DIST_H0',
+    'def_LMC_mod':   'NED_DIST_LMCMOD',
+}
+REDSHIFTS_FIELDS = ['SGAID', 'NED_NAME'] + list(REDSHIFT_COL_MAP.values()) + ['ERROR']
+DISTANCES_FIELDS = ['SGAID', 'NED_NAME'] + list(DISTANCE_COL_MAP.values()) + ['ERROR']
+
+MULTI_ENDPOINTS = {
+    'redshifts': ('RedshiftsOfObject', REDSHIFT_COL_MAP, REDSHIFTS_FIELDS),
+    'distances': ('DistancesOfObject', DISTANCE_COL_MAP, DISTANCES_FIELDS),
+}
 
 _REC_RE = re.compile(rb'name="RECORDS_RETURNED"[^>]+value="(\d+)"')
 
@@ -208,6 +261,34 @@ def parse_overview(content):
     return result, ''
 
 
+def parse_multi(content, col_map):
+    """Parse a RedshiftsOfObject/DistancesOfObject response.
+
+    Unlike OverviewOfObject, these return all available measurements per
+    object rather than a single fiducial row. Returns (rows, error_str):
+    rows is a list of dicts (one per measurement, possibly empty), error_str
+    is '' on success, 'hiccup' if NED declared rows but delivered none,
+    'no_match' for a genuine empty result, or 'parse_error' on a malformed
+    response.
+    """
+    table = _parse_votable(content)
+    if table is None:
+        return [], 'parse_error'
+    if len(table) == 0:
+        ndecl = _records_returned(content)
+        err   = 'hiccup' if (ndecl is not None and ndecl > 0) else 'no_match'
+        return [], err
+
+    rows = []
+    for row in table:
+        entry = {}
+        for vtid, csvname in col_map.items():
+            col = _col(table, vtid)
+            entry[csvname] = _scalar(row, col) if col else ''
+        rows.append(entry)
+    return rows, ''
+
+
 # ---------------------------------------------------------------------------
 # Async fetch and per-galaxy processing
 # ---------------------------------------------------------------------------
@@ -291,6 +372,32 @@ async def _process_byname(session, sga_id, objname, ned_target, semaphore, delay
     return {k: result.get(k, '') for k in BYNAME_FIELDS}
 
 
+async def _process_multi(session, sga_id, ned_name, endpoint, col_map, fields,
+                         semaphore, delay):
+    """RedshiftsOfObject/DistancesOfObject for one galaxy, with hiccup retries.
+
+    Always returns at least one row (so checkpoint/resume can mark the SGAID
+    done even when NED has no measurements or the query fails).
+    """
+    rows, err = [], 'hiccup'
+    for _ in range(2):
+        content = await _fetch(session, f'{NED_BASE}/{endpoint}',
+                               {'TARGET': ned_name}, semaphore, delay)
+        rows, err = parse_multi(content, col_map)
+        if err != 'hiccup':
+            break
+
+    if not rows:
+        return [{k: '' for k in fields} |
+                {'SGAID': sga_id, 'NED_NAME': ned_name, 'ERROR': err}]
+
+    results = []
+    for row in rows:
+        row.update({'SGAID': sga_id, 'NED_NAME': ned_name, 'ERROR': ''})
+        results.append({k: row.get(k, '') for k in fields})
+    return results
+
+
 async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, radius_arcmin,
                      ned_targets=None):
     """Process one chunk of galaxies and append results to outfile."""
@@ -316,6 +423,31 @@ async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, r
     return results
 
 
+async def _run_chunk_multi(ids, ned_names, outfile, fields, maxconcurrent, delay,
+                           endpoint, col_map):
+    """Process one chunk of galaxies (redshifts/distances) and append to outfile.
+
+    Each task can return multiple rows (one per measurement), so results are
+    flattened before writing.
+    """
+    semaphore = asyncio.Semaphore(maxconcurrent)
+    async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
+        tasks = [_process_multi(session, int(sid), str(name), endpoint, col_map, fields,
+                                semaphore, delay)
+                 for sid, name in zip(ids, ned_names)]
+        nested = await asyncio.gather(*tasks)
+    results = [row for rows in nested for row in rows]
+
+    write_header = not os.path.exists(outfile) or os.path.getsize(outfile) == 0
+    with open(outfile, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        if write_header:
+            writer.writeheader()
+        writer.writerows(results)
+
+    return nested
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint / restart
 # ---------------------------------------------------------------------------
@@ -336,30 +468,66 @@ def _load_done(outfile):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument('--region', default='dr11-south',
-                        choices=['dr11-south', 'dr11-north'],
-                        help='SGA region (default: dr11-south)')
-    parser.add_argument('--outdir', required=True,
-                        help='Directory for output CSV')
-    parser.add_argument('--byname', action='store_true',
-                        help='Query by SGA OBJNAME via OverviewOfObject (no cone search)')
-    parser.add_argument('--radius', type=float, default=5.0,
-                        help='Cone search radius in arcsec, bypos mode only (default: 5)')
-    parser.add_argument('--ntest', type=int, default=0,
-                        help='Limit to first N objects for testing (0 = full run)')
-    parser.add_argument('--chunksize', type=int, default=1000,
-                        help='Objects per checkpoint chunk (default: 1000)')
-    parser.add_argument('--maxconcurrent', type=int, default=10,
-                        help='Max simultaneous NED connections (default: 10)')
-    parser.add_argument('--delay', type=float, default=0.1,
-                        help='Polite sleep (s) after each request (default: 0.1)')
-    args = parser.parse_args()
+def run_multi(args):
+    """Run RedshiftsOfObject/DistancesOfObject for a restricted --incat of galaxies."""
+    os.makedirs(args.outdir, exist_ok=True)
+    endpoint, col_map, fields = MULTI_ENDPOINTS[args.querytype]
+    incat_tag = os.path.splitext(os.path.basename(args.incat))[0]
+    outfile   = os.path.join(args.outdir, f'ned-{args.querytype}-{incat_tag}.csv')
 
+    log.info(f'Reading input catalog: {args.incat}')
+    incat = Table.read(args.incat)
+    for col in ('SGAID', 'NED_NAME'):
+        if col not in incat.colnames:
+            raise ValueError(f'--incat is missing required column {col!r} '
+                             f'(found: {incat.colnames})')
+    sgaid    = np.asarray(incat['SGAID'])
+    ned_name = np.asarray(incat['NED_NAME']).astype(str)
+
+    if args.ntest > 0:
+        log.info(f'Test mode: {args.ntest} objects')
+        sgaid    = sgaid[:args.ntest]
+        ned_name = ned_name[:args.ntest]
+
+    done = _load_done(outfile)
+    if done:
+        log.info(f'Resuming: {len(done)} SGAIDs already done, skipping')
+    mask     = np.array([int(s) not in done for s in sgaid])
+    sgaid    = sgaid[mask]
+    ned_name = ned_name[mask]
+
+    ntotal  = len(sgaid)
+    nchunks = int(np.ceil(ntotal / args.chunksize))
+    log.info(f'Mode: {args.querytype} ({endpoint}) | {ntotal} galaxies | '
+             f'{nchunks} chunks -> {outfile}')
+    log.info(f'maxconcurrent={args.maxconcurrent}, delay={args.delay}s')
+
+    t0    = time.time()
+    ndone = 0
+    for ichunk in range(nchunks):
+        sl = slice(ichunk * args.chunksize, (ichunk + 1) * args.chunksize)
+        nested = asyncio.run(
+            _run_chunk_multi(sgaid[sl], ned_name[sl], outfile, fields,
+                             args.maxconcurrent, args.delay, endpoint, col_map)
+        )
+        ndone   += len(nested)
+        elapsed  = time.time() - t0
+        rate     = ndone / elapsed
+        eta_hr   = (ntotal - ndone) / rate / 3600 if rate > 0 else 0
+        nmatch   = sum(1 for rows in nested if rows and not rows[0].get('ERROR'))
+        nerror   = sum(1 for rows in nested if rows and rows[0].get('ERROR'))
+        nrows    = sum(len(rows) for rows in nested)
+        log.info(
+            f'Chunk {ichunk+1}/{nchunks}: {len(nested)} galaxies ({nrows} rows), '
+            f'{nmatch} matched, {nerror} errors | '
+            f'{rate:.2f} gal/s, ETA {eta_hr:.1f} hr'
+        )
+
+    log.info(f'Finished. Total elapsed: {(time.time() - t0) / 3600:.2f} hr')
+
+
+def run_overview(args):
+    """Run the OverviewOfObject query (bypos or byname) for the full SGA sample."""
     os.makedirs(args.outdir, exist_ok=True)
     mode          = 'byname' if args.byname else 'bypos'
     outfile       = os.path.join(args.outdir, f'ned-{mode}-{args.region}.csv')
@@ -432,6 +600,49 @@ def main():
         )
 
     log.info(f'Finished. Total elapsed: {(time.time() - t0) / 3600:.2f} hr')
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--querytype', default='overview',
+                        choices=['overview', 'redshifts', 'distances'],
+                        help='NED query type (default: overview)')
+    parser.add_argument('--region', default='dr11-south',
+                        choices=['dr11-south', 'dr11-north'],
+                        help='SGA region, overview querytype only (default: dr11-south)')
+    parser.add_argument('--outdir', required=True,
+                        help='Directory for output CSV')
+    parser.add_argument('--incat',
+                        help='FITS/CSV catalog with SGAID and NED_NAME columns; '
+                             'required for --querytype redshifts|distances')
+    parser.add_argument('--byname', action='store_true',
+                        help='Overview querytype only: query by SGA OBJNAME via '
+                             'OverviewOfObject (no cone search)')
+    parser.add_argument('--radius', type=float, default=5.0,
+                        help='Cone search radius in arcsec, overview bypos mode only '
+                             '(default: 5)')
+    parser.add_argument('--ntest', type=int, default=0,
+                        help='Limit to first N objects for testing (0 = full run)')
+    parser.add_argument('--chunksize', type=int, default=1000,
+                        help='Objects per checkpoint chunk (default: 1000)')
+    parser.add_argument('--maxconcurrent', type=int, default=10,
+                        help='Max simultaneous NED connections (default: 10)')
+    parser.add_argument('--delay', type=float, default=0.1,
+                        help='Polite sleep (s) after each request (default: 0.1)')
+    args = parser.parse_args()
+
+    if args.querytype in ('redshifts', 'distances'):
+        if not args.incat:
+            parser.error(f'--querytype {args.querytype} requires --incat')
+        if args.byname:
+            parser.error(f'--byname is not applicable to --querytype {args.querytype} '
+                         '(NED_NAME from --incat is queried directly)')
+        run_multi(args)
+    else:
+        run_overview(args)
 
 
 if __name__ == '__main__':
