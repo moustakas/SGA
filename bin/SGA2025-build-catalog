@@ -30,16 +30,27 @@ The adopted redshift (Z) priority is LVD > DESI > NED:
   - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
   - DESI when Z_IVAR_DESI > 0
   - NED  when Z_IVAR_NED  > 0
-A Z_FLAG bit is set when any two measured redshifts differ by more than
---vdiff-threshold km/s.
+
+Z_FLAG bits
+-----------
+  0x01  Z_FLAG_DISCREPANCY     any two measured redshifts differ by more than
+                                --vdiff-threshold km/s
+  0x02  Z_FLAG_NED_SUSPECT     NED is the sole redshift measurement (no LVD or
+                                DESI value at all) and NED_FLAG Z_SUSPECT is set
+  0x04  Z_FLAG_NED_UNRESOLVED  as above, and NED_FLAG Z_UNRESOLVED is set (no
+                                confident replacement was found by
+                                SGA2025-ned-merge; the adopted Z may be wrong)
 
 NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
 SGA2025-ned-merge) may include Z_SUSPECT (0x08, adopted NED_Z exceeded the
 redshift-override threshold there) and Z_UNRESOLVED (0x10, no confident
 replacement was found). Z_NED/Z_IVAR_NED are used as-is regardless of these
 bits -- unlike the DESI GALAXY Z>1.0 cut above, no implausibility filtering
-is applied to NED redshifts here; Z_UNRESOLVED is intended purely as a
-signal for targeted visual inspection.
+is applied to NED redshifts here. Z_FLAG_NED_SUSPECT/UNRESOLVED (above) only
+propagate these bits when NED is the sole measurement, since DISCREPANCY
+already covers cases where a second measurement exists to cross-check
+against; both are intended as a signal for targeted visual inspection, not
+an automatic correction.
 
 Sentinels
 ---------
@@ -110,9 +121,15 @@ from SGA.io import table_to_fitsio
 from SGA.logger import log, LOGFMT
 
 
-NED_Z_NOMINAL_ERR  = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
-FLOAT_SENTINEL     = -1.              # sentinel for floats without an IVAR companion
-Z_FLAG_DISCREPANCY = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
+NED_Z_NOMINAL_ERR     = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
+FLOAT_SENTINEL        = -1.              # sentinel for floats without an IVAR companion
+Z_FLAG_DISCREPANCY    = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
+Z_FLAG_NED_SUSPECT    = 0x02             # sole measurement is NED; NED_FLAG Z_SUSPECT set
+Z_FLAG_NED_UNRESOLVED = 0x04             # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
+
+# Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED in SGA2025-ned-merge.
+NED_FLAG_Z_SUSPECT    = 0x08
+NED_FLAG_Z_UNRESOLVED = 0x10
 
 # NED_CARRY output columns that use 0. as their missing sentinel because they
 # have an IVAR companion column (IVAR=0 signals no measurement).
@@ -996,6 +1013,16 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 if C_LIGHT * abs(z_valid[j] - zb) / (1. + min(z_valid[j], zb)) > vdiff_threshold:
                     adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
 
+        # Z_FLAG: propagate NED_FLAG when NED is the *sole* redshift measurement
+        # (no LVD or DESI value at all, so DISCREPANCY above can never fire and
+        # would otherwise silently miss a still-suspect/unresolved NED redshift).
+        if len(z_valid) == 1 and zivar_ned > 0.:
+            ned_flag = int(ned_arrs['NED_FLAG'][i]) if 'NED_FLAG' in ned_arrs else 0
+            if ned_flag & NED_FLAG_Z_SUSPECT:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_NED_SUSPECT
+            if ned_flag & NED_FLAG_Z_UNRESOLVED:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_NED_UNRESOLVED
+
         # Adopted distance: LVD preferred, then NED
         dist_ned      = ned_arrs['DIST_NED'][i]
         dist_ivar_ned = ned_arrs['DIST_IVAR_NED'][i]
@@ -1202,7 +1229,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_src_lvd   = int(np.sum(src_arr == 'LVD'))
     n_src_ned   = int(np.sum(src_arr == 'NED'))
     n_src_none  = int(np.sum(src_arr == ''))
-    n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
+    n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY)    != 0))
+    n_ned_susp  = int(np.sum((flag_arr & Z_FLAG_NED_SUSPECT)    != 0))
+    n_ned_unres = int(np.sum((flag_arr & Z_FLAG_NED_UNRESOLVED) != 0))
     n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
     n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
@@ -1230,6 +1259,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     emit(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
     emit()
     emit(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
+    emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
+    emit(f'  Z_FLAG NED unresolved (sole) : {n_ned_unres:>8,d}  ({pct(n_ned_unres):5.1f}%)')
     emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     emit()
     emit(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
