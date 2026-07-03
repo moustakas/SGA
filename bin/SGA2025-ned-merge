@@ -33,8 +33,8 @@ NED occasionally assigns a bogus high-z "fiducial" redshift to an object (e.g.
 SDSS fiber contamination from a background source overlapping a nearby dwarf).
 When the adopted NED_Z exceeds --z-swap-threshold (default 0.4) and a
 RedshiftsOfObject query result is available for that SGAID (see
-SGA2025-ned-query --querytype redshifts / SGA2025-ned-build-incat), alternative
-measurements with z <= threshold are considered:
+SGA2025-ned-query --querytype redshifts), alternative measurements with
+z <= threshold are considered:
   1. Candidates are grouped into clusters of mutually agreeing measurements
      (relative gap |dz|/(1+z) < --z-cluster-tol, default 0.01).
   2. If one cluster is strictly the largest (including the trivial case of a
@@ -499,12 +499,11 @@ def main():
                         help='Process one region only (default: both)')
     parser.add_argument('--sep-threshold', type=float, default=3.5,
                         help='Byname positional offset threshold in arcsec (default: 3.5)')
-    parser.add_argument('--redshifts-glob', default='ned-redshifts-incat-redshifts-{region}.csv',
+    parser.add_argument('--redshifts-glob', default='ned-redshifts-{region}.csv',
                         help='Filename template (relative to --outdir) for the optional '
                              'RedshiftsOfObject override data produced by SGA2025-ned-query '
                              '--querytype redshifts; {region} is substituted. Skipped '
-                             'gracefully if not found (default: '
-                             'ned-redshifts-incat-redshifts-{region}.csv)')
+                             'gracefully if not found (default: ned-redshifts-{region}.csv)')
     parser.add_argument('--z-swap-threshold', type=float, default=0.4,
                         help='Adopted NED_Z above this value triggers consideration of '
                              'alternative redshift measurements (default: 0.4)')

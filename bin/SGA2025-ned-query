@@ -15,12 +15,19 @@ Three query types (--querytype):
         galaxies that fail the positional match due to coordinate offsets.
         Output: ned-byname-{region}.csv
 
-  redshifts / distances: RedshiftsOfObject / DistancesOfObject for a
-    restricted --incat of galaxies (e.g. ones flagged with unreliable
-    default NED_Z/NED_DIST), queried directly by NED_NAME. Unlike overview,
-    NED returns *all* available measurements per object (not just the
-    fiducial one), so the output has one row per measurement, not per
-    galaxy. Output: ned-{querytype}-{incat basename}.csv
+  redshifts / distances: RedshiftsOfObject / DistancesOfObject for every
+    galaxy with a successful NED match, queried directly by NED_NAME. This
+    has no column/threshold gate, so it also catches objects OverviewOfObject
+    never assigned a fiducial NED_Z/NED_DIST to at all but which still have
+    real measurements in NED's full list (e.g. UGC 06451). Requires
+    ned-merged-{region}.fits in --outdir (see SGA2025-ned-merge); the target
+    name for each SGAID is that object's own winning CROSSIDS[0] (already
+    arbitrated between byname/bypos by ned-merge), not derived directly from
+    ned-byname/ned-bypos -- bypos's raw NED_NAME can point to a different,
+    poorly cross-identified NED entry near the SGA position and return zero
+    rows. Unlike overview, NED returns *all* available measurements per
+    object (not just the fiducial one), so the output has one row per
+    measurement, not per galaxy. Output: ned-{querytype}-{region}.csv
 
 Safe to restart: SGAIDs already present in the output file are skipped.
 
@@ -41,31 +48,15 @@ Examples
 ned-crossids --region dr11-south --outdir /tmp/ned-test --ntest 20
 ned-crossids --region dr11-south --outdir /tmp/ned-test --ntest 20 --byname
 
-# Full runs:
+# Full runs, one region at a time:
 ned-crossids --region dr11-south --outdir /path/to/output
 ned-crossids --region dr11-south --outdir /path/to/output --byname
 ned-crossids --region dr11-north --outdir /path/to/output
 
-# Redshifts/distances for a restricted list of objects (SGAID + NED_NAME
-# columns, e.g. a filtered ned-bypos-dr11-south.csv):
-ned-crossids --querytype redshifts --incat bad-redshifts.csv --outdir /path/to/output
-ned-crossids --querytype distances --incat bad-redshifts.csv --outdir /path/to/output
-
-python bin/SGA2025-ned-query --querytype distances \
-    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-south.csv \
-    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
-
-python bin/SGA2025-ned-query --querytype distances \
-    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-north.csv \
-    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
-
-python bin/SGA2025-ned-query --querytype redshifts \
-    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-south.csv \
-    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
-
-python bin/SGA2025-ned-query --querytype redshifts \
-    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-north.csv \
-    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
+# Redshifts/distances for the full sample (after the overview runs above
+# and SGA2025-ned-merge --outdir /path/to/output):
+ned-crossids --querytype redshifts  --region dr11-south --outdir /path/to/output
+ned-crossids --querytype distances  --region dr11-south --outdir /path/to/output
 
 """
 import os
@@ -78,6 +69,7 @@ import numpy as np
 from io import BytesIO
 
 import aiohttp
+import fitsio
 from astropy.table import Table
 from astropy.io.votable import parse_single_table
 
@@ -482,23 +474,54 @@ def _load_done(outfile):
 
 
 # ---------------------------------------------------------------------------
+# Full-sample NED_NAME resolution for redshifts/distances querytypes
+# ---------------------------------------------------------------------------
+def load_fullsample_targets(ned_merged_path):
+    """Resolve SGAID -> NED target name for every galaxy with a successful
+    NED cross-match, from the already-arbitrated ned-merged-{region}.fits
+    (see SGA2025-ned-merge).
+
+    Uses the *winning* source's own CROSSIDS[0] as the query target
+    (guaranteed to round-trip back to the same NED object, since it came
+    from that object's own cross-ID list), falling back to the bypos-only
+    NED_NAME column when CROSSIDS is empty (NED_SOURCE='none' -- no
+    successful match at all).
+
+    Do not resolve names from ned-byname/ned-bypos directly: bypos's
+    NED_NAME sometimes points to a different, poorly cross-identified NED
+    entry near the SGA position (e.g. a lone WISE detection) rather than the
+    richly-cross-identified object byname found for the same SGAID --
+    confirmed to return zero RedshiftsOfObject/DistancesOfObject rows in
+    that case (e.g. UGC 06451 / SGAID 5054374).
+    """
+    tbl = Table(fitsio.read(ned_merged_path, columns=['SGAID', 'CROSSIDS', 'NED_NAME']))
+    targets = {}
+    for row in tbl:
+        crossids = str(row['CROSSIDS']).strip()
+        name     = crossids.split('|')[0].strip() if crossids else str(row['NED_NAME']).strip()
+        if name:
+            targets[int(row['SGAID'])] = name
+    return targets
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 def run_multi(args):
-    """Run RedshiftsOfObject/DistancesOfObject for a restricted --incat of galaxies."""
+    """Run RedshiftsOfObject/DistancesOfObject for the full SGA sample."""
     os.makedirs(args.outdir, exist_ok=True)
     endpoint, col_map, fields = MULTI_ENDPOINTS[args.querytype]
-    incat_tag = os.path.splitext(os.path.basename(args.incat))[0]
-    outfile   = os.path.join(args.outdir, f'ned-{args.querytype}-{incat_tag}.csv')
+    outfile         = os.path.join(args.outdir, f'ned-{args.querytype}-{args.region}.csv')
+    ned_merged_path = os.path.join(args.outdir, f'ned-merged-{args.region}.fits')
 
-    log.info(f'Reading input catalog: {args.incat}')
-    incat = Table.read(args.incat)
-    for col in ('SGAID', 'NED_NAME'):
-        if col not in incat.colnames:
-            raise ValueError(f'--incat is missing required column {col!r} '
-                             f'(found: {incat.colnames})')
-    sgaid    = np.asarray(incat['SGAID'])
-    ned_name = np.asarray(incat['NED_NAME']).astype(str)
+    if not os.path.exists(ned_merged_path):
+        raise SystemExit(f'{ned_merged_path} does not exist; run SGA2025-ned-merge first.')
+
+    log.info(f'Resolving NED targets from {ned_merged_path}')
+    targets  = load_fullsample_targets(ned_merged_path)
+    sgaid    = np.array(sorted(targets.keys()))
+    ned_name = np.array([targets[s] for s in sgaid])
+    log.info(f'  {len(sgaid):,d} NED-matched objects')
 
     if args.ntest > 0:
         log.info(f'Test mode: {args.ntest} objects')
@@ -628,12 +651,11 @@ def main():
                         help='NED query type (default: overview)')
     parser.add_argument('--region', default='dr11-south',
                         choices=['dr11-south', 'dr11-north'],
-                        help='SGA region, overview querytype only (default: dr11-south)')
+                        help='SGA region (default: dr11-south)')
     parser.add_argument('--outdir', required=True,
-                        help='Directory for output CSV')
-    parser.add_argument('--incat',
-                        help='FITS/CSV catalog with SGAID and NED_NAME columns; '
-                             'required for --querytype redshifts|distances')
+                        help='Directory for output CSV; also where redshifts/distances '
+                             'querytypes look for ned-merged-{region}.fits '
+                             '(see SGA2025-ned-merge)')
     parser.add_argument('--byname', action='store_true',
                         help='Overview querytype only: query by SGA OBJNAME via '
                              'OverviewOfObject (no cone search)')
@@ -651,11 +673,9 @@ def main():
     args = parser.parse_args()
 
     if args.querytype in ('redshifts', 'distances'):
-        if not args.incat:
-            parser.error(f'--querytype {args.querytype} requires --incat')
         if args.byname:
             parser.error(f'--byname is not applicable to --querytype {args.querytype} '
-                         '(NED_NAME from --incat is queried directly)')
+                         '(NED_NAME is resolved from ned-byname/ned-bypos directly)')
         run_multi(args)
     else:
         run_overview(args)
