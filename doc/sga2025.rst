@@ -723,12 +723,28 @@ This pass runs once per SGA-2025 release rather than automatically as part
 of routine processing, since it requires a separate, restricted NED query
 for the affected galaxies.
 
-**Z_FLAG (redshift discrepancy)**
+**Z_FLAG (redshift quality)**
 
 Bit ``0x01`` of ``Z_FLAG`` is set when any two of the three measured
 redshifts (LVD, DESI, NED) differ by more than 1000 km/s in the rest frame.
 This flags sources where independent measurements are inconsistent and
 warrants closer inspection.
+
+Bits ``0x02`` and ``0x04`` address a blind spot in the discrepancy check:
+when NED is the *only* redshift measurement available (no LVD or DESI value
+at all), there is nothing to cross-check it against, so a still-suspect or
+unresolved NED redshift (see ``NED_FLAG`` above) would otherwise pass
+through silently. In that single-measurement case only, the corresponding
+``NED_FLAG`` bits are mirrored into ``Z_FLAG``:
+
+- ``0x02`` -- the sole measurement's ``NED_FLAG`` has ``Z_SUSPECT`` set (the
+  redshift-override logic considered alternatives; it may or may not have
+  found a confident replacement).
+- ``0x04`` -- the sole measurement's ``NED_FLAG`` has ``Z_UNRESOLVED`` set:
+  no confident replacement was found, so the adopted ``Z`` may still be
+  wrong (e.g. VCC 1601, whose only two NED redshift measurements are both
+  implausibly high). Neither bit triggers any automatic correction; both
+  are intended purely as a signal for targeted visual inspection.
 
 **Adopted distance (DIST, DIST_IVAR, DIST_REF)**
 
@@ -938,8 +954,8 @@ Multiple bits may be set simultaneously.
    can legitimately differ from the SGA centroid (extended dwarfs), so a
    successful byname match is always accepted regardless of positional offset.
 
-``Z_FLAG`` — redshift consistency
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``Z_FLAG`` — redshift quality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -953,6 +969,15 @@ Multiple bits may be set simultaneously.
      - Any two measured redshifts (LVD, DESI, NED) differ by more than
        1000 km/s in the rest frame; the adopted redshift should be
        treated with caution
+   * - ``NED_SUSPECT``
+     - 2
+     - NED is the sole redshift measurement (no LVD or DESI value at all)
+       and its ``NED_FLAG`` has ``Z_SUSPECT`` set
+   * - ``NED_UNRESOLVED``
+     - 4
+     - As ``NED_SUSPECT``, and its ``NED_FLAG`` also has ``Z_UNRESOLVED``
+       set: no confident replacement redshift was found, so the adopted
+       redshift may still be wrong
 
 ``OPTMASKBITS``, ``GALEXMASKBITS``, ``UNWISEMASKBITS``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
