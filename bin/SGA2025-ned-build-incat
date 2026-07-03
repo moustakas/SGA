@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+"""
+SGA2025-ned-build-incat: build a restricted SGAID,NED_NAME incat for
+SGA2025-ned-query --querytype redshifts|distances, from the union of
+ned-byname-{region}.csv and ned-bypos-{region}.csv rows matching a
+threshold on one column.
+
+Selection: an SGAID qualifies if <column> > <minval> in EITHER --byname or
+--bypos (non-empty, numeric).
+
+NED_NAME resolution (mirrors SGA2025-ned-merge's NED_NAME column):
+  1. bypos's NED_NAME when bypos qualifies (position-verified cross-match).
+  2. Otherwise, the first entry of byname's CROSSIDS (NED's own resolved
+     preferred name for the match byname found).
+
+Runs:
+-----
+SGA2025-ned-build-incat \
+    --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-south.csv \
+    --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-south.csv \
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-south.csv
+    --column NED_DIST --minval 0 \
+
+SGA2025-ned-build-incat \
+    --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-north.csv \
+    --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-north.csv \
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-north.csv
+    --column NED_DIST --minval 0 \
+
+SGA2025-ned-build-incat \
+    --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-south.csv \
+    --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-south.csv \
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-south.csv
+    --column NED_Z --minval 0.2 \
+
+SGA2025-ned-build-incat \
+    --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-north.csv \
+    --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-north.csv \
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-north.csv
+    --column NED_Z --minval 0.2 \
+
+"""
+import csv
+import argparse
+
+from SGA.logger import log
+
+
+def _load_qualifying(fname, column, minval):
+    """Return {SGAID: row dict} for rows where column > minval."""
+    out = {}
+    with open(fname, newline='') as f:
+        for row in csv.DictReader(f):
+            v = row.get(column, '')
+            if v == '':
+                continue
+            try:
+                if float(v) > minval:
+                    out[row['SGAID']] = row
+            except ValueError:
+                continue
+    return out
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--byname', required=True, help='ned-byname-{region}.csv')
+    parser.add_argument('--bypos', required=True, help='ned-bypos-{region}.csv')
+    parser.add_argument('--column', default='NED_DIST',
+                        help='Column to threshold (default: NED_DIST)')
+    parser.add_argument('--minval', type=float, default=0.0,
+                        help='Select rows with column > minval (default: 0)')
+    parser.add_argument('--outfile', required=True, help='Output SGAID,NED_NAME CSV')
+    args = parser.parse_args()
+
+    log.info(f'Scanning {args.bypos} for {args.column} > {args.minval}')
+    bypos = _load_qualifying(args.bypos, args.column, args.minval)
+    log.info(f'  {len(bypos)} qualifying SGAIDs')
+
+    log.info(f'Scanning {args.byname} for {args.column} > {args.minval}')
+    byname = _load_qualifying(args.byname, args.column, args.minval)
+    log.info(f'  {len(byname)} qualifying SGAIDs')
+
+    sgaids = sorted(set(bypos) | set(byname), key=int)
+
+    rows = []
+    n_bypos = n_byname_only = n_skipped = 0
+    for sid in sgaids:
+        ned_name = ''
+        if sid in bypos:
+            ned_name = bypos[sid].get('NED_NAME', '')
+            if ned_name:
+                n_bypos += 1
+        if not ned_name and sid in byname:
+            crossids = byname[sid].get('CROSSIDS', '')
+            if crossids:
+                ned_name = crossids.split('|')[0].strip()
+                n_byname_only += 1
+        if not ned_name:
+            n_skipped += 1
+            continue
+        rows.append({'SGAID': sid, 'NED_NAME': ned_name})
+
+    log.info(f'Union: {len(sgaids)} SGAIDs -> {len(rows)} resolved '
+             f'(bypos={n_bypos}, byname-CROSSIDS-fallback={n_byname_only}, '
+             f'skipped-no-name={n_skipped})')
+
+    with open(args.outfile, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['SGAID', 'NED_NAME'])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    log.info(f'Wrote {args.outfile}')
+
+
+if __name__ == '__main__':
+    main()

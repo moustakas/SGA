@@ -51,6 +51,14 @@ ned-crossids --region dr11-north --outdir /path/to/output
 ned-crossids --querytype redshifts --incat bad-redshifts.csv --outdir /path/to/output
 ned-crossids --querytype distances --incat bad-redshifts.csv --outdir /path/to/output
 
+python bin/SGA2025-ned-query --querytype distances \
+    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-south.csv \
+    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
+
+python bin/SGA2025-ned-query --querytype distances \
+    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-north.csv \
+    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
+
 """
 import os
 import re
