@@ -18,25 +18,25 @@ Runs:
 SGA2025-ned-build-incat \
     --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-south.csv \
     --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-south.csv \
-    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-south.csv
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-distances-incat-dr11-south.csv
     --column NED_DIST --minval 0 \
 
 SGA2025-ned-build-incat \
     --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-north.csv \
     --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-north.csv \
-    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-north.csv
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-distances-incat-dr11-north.csv
     --column NED_DIST --minval 0 \
 
 SGA2025-ned-build-incat \
     --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-south.csv \
     --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-south.csv \
-    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-south.csv
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-redshifts-incat-dr11-south.csv
     --column NED_Z --minval 0.2 \
 
 SGA2025-ned-build-incat \
     --byname /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-byname-dr11-north.csv \
     --bypos /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-bypos-dr11-north.csv \
-    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-north.csv
+    --outfile /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-redshifts-incat-dr11-north.csv
     --column NED_Z --minval 0.2 \
 
 """

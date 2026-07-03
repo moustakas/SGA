@@ -14,7 +14,7 @@ For each galaxy a single "best" DESI spectrum is selected:
   1. Deduplicate with ZCAT_PRIMARY=True (DESI's highest-S/N coadd per TARGETID).
   1b. Drop physically implausible spectra regardless of ZWARN:
         SPECTYPE='STAR'            — always wrong for galaxies
-        SPECTYPE='GALAXY', Z > 1.5 — redshift too high; always a pipeline error
+        SPECTYPE='GALAXY', Z > 1.0 — redshift too high; always a pipeline error
         SPECTYPE='QSO',    Z > 1.0 — redshift too high for this sample
   2. Prefer SPECTYPE='GALAXY' AND ZWARN=0.
   3. Fall back to ZWARN=0 with any SPECTYPE.
@@ -32,6 +32,14 @@ The adopted redshift (Z) priority is LVD > DESI > NED:
   - NED  when Z_IVAR_NED  > 0
 A Z_FLAG bit is set when any two measured redshifts differ by more than
 --vdiff-threshold km/s.
+
+NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
+SGA2025-ned-merge) may include Z_SUSPECT (0x08, adopted NED_Z exceeded the
+redshift-override threshold there) and Z_UNRESOLVED (0x10, no confident
+replacement was found). Z_NED/Z_IVAR_NED are used as-is regardless of these
+bits -- unlike the DESI GALAXY Z>1.0 cut above, no implausibility filtering
+is applied to NED redshifts here; Z_UNRESOLVED is intended purely as a
+signal for targeted visual inspection.
 
 Sentinels
 ---------
@@ -598,7 +606,7 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     zvals     = primary['Z'].astype(float)
     valid     = (
         (spectypes != 'STAR') &
-        ~((spectypes == 'GALAXY') & (zvals > 1.5)) &
+        ~((spectypes == 'GALAXY') & (zvals > 1.0)) &
         ~((spectypes == 'QSO')    & (zvals > 1.0))
     )
     primary   = primary[valid]

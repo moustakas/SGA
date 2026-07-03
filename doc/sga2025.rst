@@ -683,7 +683,7 @@ steps, applied to all spectra within 3 arcsec of the SGA position:
 2. Drop physically implausible spectra regardless of ``ZWARN``:
 
    - ``SPECTYPE = STAR`` — always a mis-classification for galaxies.
-   - ``SPECTYPE = GALAXY`` and ``Z > 1.5`` — pipeline redshift error.
+   - ``SPECTYPE = GALAXY`` and ``Z > 1.0`` — pipeline redshift error.
    - ``SPECTYPE = QSO`` and ``Z > 1.0`` — outside the redshift range of this sample.
 
 3. Prefer ``SPECTYPE = GALAXY`` and ``ZWARN = 0``.
@@ -695,6 +695,33 @@ galaxy (``Z_IVAR_DESI = 0``). The 3-arcsec proximity cut excludes background
 or foreground objects whose fiber happens to fall inside a large SGA ellipse.
 ``NSPEC_DESI`` records the total number of DESI spectra (any ``ZWARN``) found
 within the SGA ellipse, regardless of the selection outcome.
+
+**NED redshift override**
+
+NED occasionally assigns a bogus, very high "fiducial" redshift to an object
+-- most often SDSS fiber contamination from a background source overlapping
+a nearby dwarf galaxy -- while its own full list of redshift measurements
+for that object contains the correct, much lower value. When the adopted
+``Z_NED`` exceeds a threshold (0.4 by default; true SGA-2025 redshifts are
+almost never this high), the full set of NED redshift measurements for that
+object is queried and used to look for a better answer:
+
+1. Candidate measurements at or below the threshold are grouped into
+   clusters of mutually agreeing values.
+2. If one cluster is unambiguously the largest (including the trivial case
+   of a single alternative measurement), the highest-quality measurement
+   within it is adopted -- spectroscopic measurements are preferred over
+   photometric ones, then a clean quality flag over an uncertain one, then
+   the most recent literature reference.
+3. Otherwise -- multiple candidates that disagree with each other, or none
+   at all below threshold -- no confident replacement exists; the lowest
+   candidate (if any) is adopted as a best guess, or the original value is
+   kept unchanged if there are no candidates at all. Either way the result
+   is flagged for follow-up (see ``NED_FLAG`` in :ref:`bitmasks`).
+
+This pass runs once per SGA-2025 release rather than automatically as part
+of routine processing, since it requires a separate, restricted NED query
+for the affected galaxies.
 
 **Z_FLAG (redshift discrepancy)**
 
@@ -895,6 +922,15 @@ Multiple bits may be set simultaneously.
    * - ``BYPOS_FAIL``
      - 4
      - Bypos query also failed; NED cross-match result may be incomplete
+   * - ``Z_SUSPECT``
+     - 8
+     - Adopted ``Z_NED`` exceeded the redshift-override threshold (0.4 by
+       default); alternative NED redshift measurements were considered
+   * - ``Z_UNRESOLVED``
+     - 16
+     - ``Z_SUSPECT`` was set but no confident replacement redshift was
+       found (disagreeing alternatives, or none below threshold); the
+       adopted ``Z_NED`` should be treated with caution
 
 .. note::
 

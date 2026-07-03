@@ -59,6 +59,14 @@ python bin/SGA2025-ned-query --querytype distances \
     --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-distances-dr11-north.csv \
     --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
 
+python bin/SGA2025-ned-query --querytype redshifts \
+    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-south.csv \
+    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
+
+python bin/SGA2025-ned-query --querytype redshifts \
+    --incat /Users/ioannis/research/projects/SGA/2025/sample/nedquery/incat-redshifts-dr11-north.csv \
+    --outdir /Users/ioannis/research/projects/SGA/2025/sample/nedquery
+
 """
 import os
 import re
