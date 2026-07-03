@@ -499,6 +499,23 @@ These columns are populated only for objects in the Local Volume Database
      - Inverse variance of ``DIST_LVD`` (Mpc\ :sup:`−2`; 0 if no LVD distance
        uncertainty)
 
+**Peculiar-velocity-corrected redshift** (see :ref:`redshifts-distances` for details)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``Z_COSMO``
+     - float64
+     - CMB-frame redshift with the mean pvhub-predicted peculiar velocity
+       removed (0 = no measurement; use ``Z_COSMO_IVAR > 0`` to test)
+   * - ``Z_COSMO_IVAR``
+     - float64
+     - Inverse variance of ``Z_COSMO`` (0 = no measurement)
+
 **Group membership**
 
 .. list-table::
@@ -756,6 +773,27 @@ The adopted distance follows the priority order **LVD > NED**:
 ``DIST_IVAR = 0`` may mean either no distance is available or that no formal
 uncertainty was reported (unlike redshifts, no nominal default uncertainty is
 assumed for distances). LVD distances are converted from kpc to Mpc.
+
+**Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
+
+For every galaxy with a valid adopted redshift (``Z_IVAR > 0``), the
+heliocentric ``Z`` is converted to the CMB frame using the standard dipole
+(`Planck 2018 <https://www.aanda.org/articles/aa/full_html/2020/09/aa33910-18/aa33910-18.html>`_:
+369.82 km/s toward RA = 167.942°, Dec = −6.944°, J2000).
+
+For objects with CMB-frame velocity below 20,000 km/s -- approximately the
+domain of the flow-field reconstructions used below -- the peculiar velocity
+along the line of sight is predicted using
+`pvhub <https://github.com/KSaid-1/pvhub>`_ (Said et al.), which provides
+four independent linear reconstructions of the local velocity field
+(2M++-SDSS, 2M++-SDSS+6dF, 2MRS, and 2M++). ``Z_COSMO`` is the CMB-frame
+redshift with the mean peculiar velocity across these four models removed;
+``Z_COSMO_IVAR`` combines the model-to-model scatter with the adopted
+redshift's own measurement uncertainty in quadrature.
+
+Beyond 20,000 km/s -- outside the reconstructions' domain -- ``Z_COSMO`` is
+simply the CMB-frame redshift with no peculiar-velocity correction applied,
+and ``Z_COSMO_IVAR`` carries over the adopted ``Z_IVAR`` unchanged.
 
 **Sentinel conventions**
 
