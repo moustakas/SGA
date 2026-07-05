@@ -19,9 +19,10 @@ Data Access
    The SGA-2025 data release and web visualizations are currently in
    draft form and still a work in progress.
 
-**Merged catalogs** — one FITS file per imaging region *(right-click → Save link as to download)*
+**Merged catalogs** *(right-click → Save link as to download)*
 (see :ref:`merged-catalogs` for the data model and :ref:`imaging-regions` for region descriptions):
 
+- `SGA2025-v1.0.fits <https://portal.nersc.gov/project/cosmo/sga/2025/SGA2025-v1.0.fits>`__ — full, deduplicated catalog — 470,625 galaxies, 1.7 GB
 - `SGA2025-dr11-north-v1.0.fits <https://portal.nersc.gov/project/cosmo/sga/2025/SGA2025-dr11-north-v1.0.fits>`__ — 90,504 galaxies, 340 MB
 - `SGA2025-dr11-south-v1.0.fits <https://portal.nersc.gov/project/cosmo/sga/2025/SGA2025-dr11-south-v1.0.fits>`__ — 395,435 galaxies, 1.4 GB
 

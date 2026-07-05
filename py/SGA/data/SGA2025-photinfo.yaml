@@ -1,0 +1,56 @@
+# SGA-2025 photometric parameter file
+
+uniqueid: 'SGAID'
+
+photounits: 'nanomaggies'
+
+synth_bands: ['g', 'r', 'i', 'z', 'W1', 'W2', 'W3', 'W4', 'FUV', 'NUV']
+
+bands: ['g', 'r', 'i', 'z', 'W1', 'W2', 'W3', 'W4', 'FUV', 'NUV']
+
+bands_to_fit: [True, True, True, True, True, True, True, True, True, True]
+
+
+filters: {
+  N: ['BASS-g', 'BASS-r', 'decam2014-r', 'MzLS-z',
+      'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4',
+      'galex-fuv', 'galex-nuv'],
+  S: ['decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z',
+      'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4',
+      'galex-fuv', 'galex-nuv'],
+}
+
+synth_filters: {
+  N: ['BASS-g', 'BASS-r', 'decam2014-r', 'MzLS-z',
+      'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4',
+      'galex-fuv', 'galex-nuv'],
+  S: ['decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z',
+      'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4',
+      'galex-fuv', 'galex-nuv'],
+}
+
+min_uncertainty: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+
+readcols: ['SGAID', 'RA', 'DEC']
+
+fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_I', 'FLUX_Z',
+           'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+           'FLUX_FUV', 'FLUX_NUV']
+
+fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
+               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+               'FLUX_IVAR_FUV', 'FLUX_IVAR_NUV']
+
+absmag_bands: ['decam_u', 'decam_g', 'decam_r', 'decam_i', 'decam_z',
+               'wise_w1', 'wise_w3', 'wise_w3', 'wise_w4',
+               'galex_fuv', 'galex_nuv']
+
+band_shift: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+absmag_filters: ['decam2014-u', 'decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z',
+                 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4',
+                 'galex-fuv', 'galex-nuv']
+
+viewer_layer: ls-dr11
+
+viewer_pixscale: 0.262
