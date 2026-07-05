@@ -716,13 +716,24 @@ within the SGA ellipse, regardless of the selection outcome.
 
 **NED redshift override**
 
-NED occasionally assigns a bogus, very high "fiducial" redshift to an object
--- most often SDSS fiber contamination from a background source overlapping
-a nearby dwarf galaxy -- while its own full list of redshift measurements
-for that object contains the correct, much lower value. When the adopted
-``Z_NED`` exceeds a threshold (0.4 by default; true SGA-2025 redshifts are
-almost never this high), the full set of NED redshift measurements for that
-object is queried and used to look for a better answer:
+This logic handles two distinct problems, both resolved against the full set
+of NED redshift measurements for the object (not just its default/fiducial
+value):
+
+- NED occasionally assigns a bogus, very high "fiducial" redshift to an
+  object -- most often SDSS fiber contamination from a background source
+  overlapping a nearby dwarf galaxy -- while its own full list of redshift
+  measurements for that object contains the correct, much lower value.
+  Triggered when the adopted ``Z_NED`` exceeds a threshold (0.4 by default;
+  true SGA-2025 redshifts are almost never this high).
+- NED's own aggregated default has no redshift at all for the object, even
+  though its full measurement list does (e.g. UGC 06451, whose only
+  overview-level redshift is a stale/bogus WISE photometric estimate but
+  which has real spectroscopic measurements in NED's full list). Triggered
+  whenever the default ``Z_NED`` is missing, regardless of threshold.
+
+In both cases the full set of NED redshift measurements for that object is
+queried and used to look for a good answer:
 
 1. Candidate measurements at or below the threshold are grouped into
    clusters of mutually agreeing values.
@@ -734,7 +745,9 @@ object is queried and used to look for a better answer:
 3. Otherwise -- multiple candidates that disagree with each other, or none
    at all below threshold -- no confident replacement exists; the lowest
    candidate (if any) is adopted as a best guess, or the original value is
-   kept unchanged if there are no candidates at all. Either way the result
+   kept unchanged if there are no candidates at all (for a missing default
+   with no candidates, ``Z_NED`` is simply left unset -- the ordinary case of
+   a genuinely unmeasured object, not worth flagging). Otherwise the result
    is flagged for follow-up (see ``NED_FLAG`` in :ref:`bitmasks`).
 
 This pass runs once per SGA-2025 release rather than automatically as part
@@ -748,12 +761,12 @@ redshifts (LVD, DESI, NED) differ by more than 1000 km/s in the rest frame.
 This flags sources where independent measurements are inconsistent and
 warrants closer inspection.
 
-Bits ``0x02`` and ``0x04`` address a blind spot in the discrepancy check:
-when NED is the *only* redshift measurement available (no LVD or DESI value
-at all), there is nothing to cross-check it against, so a still-suspect or
-unresolved NED redshift (see ``NED_FLAG`` above) would otherwise pass
-through silently. In that single-measurement case only, the corresponding
-``NED_FLAG`` bits are mirrored into ``Z_FLAG``:
+Bits ``0x02``, ``0x04``, and ``0x08`` address a blind spot in the discrepancy
+check: when NED is the *only* redshift measurement available (no LVD or DESI
+value at all), there is nothing to cross-check it against, so a still-
+suspect, unresolved, or missing-default NED redshift (see ``NED_FLAG`` above)
+would otherwise pass through silently. In that single-measurement case only,
+the corresponding ``NED_FLAG`` bits are mirrored into ``Z_FLAG``:
 
 - ``0x02`` -- the sole measurement's ``NED_FLAG`` has ``Z_SUSPECT`` set (the
   redshift-override logic considered alternatives; it may or may not have
@@ -761,8 +774,13 @@ through silently. In that single-measurement case only, the corresponding
 - ``0x04`` -- the sole measurement's ``NED_FLAG`` has ``Z_UNRESOLVED`` set:
   no confident replacement was found, so the adopted ``Z`` may still be
   wrong (e.g. VCC 1601, whose only two NED redshift measurements are both
-  implausibly high). Neither bit triggers any automatic correction; both
-  are intended purely as a signal for targeted visual inspection.
+  implausibly high).
+- ``0x08`` -- the sole measurement's ``NED_FLAG`` has ``Z_MISSING`` set:
+  NED had no default redshift at all, and the adopted ``Z`` was pulled from
+  NED's full list of redshift measurements instead (e.g. UGC 06451).
+
+None of these bits trigger any automatic correction; all three are intended
+purely as a signal for targeted visual inspection.
 
 **Adopted distance (DIST, DIST_IVAR, DIST_REF)**
 
@@ -983,9 +1001,13 @@ Multiple bits may be set simultaneously.
        default); alternative NED redshift measurements were considered
    * - ``Z_UNRESOLVED``
      - 16
-     - ``Z_SUSPECT`` was set but no confident replacement redshift was
-       found (disagreeing alternatives, or none below threshold); the
-       adopted ``Z_NED`` should be treated with caution
+     - ``Z_SUSPECT`` or ``Z_MISSING`` was set but no confident replacement
+       redshift was found (disagreeing alternatives, or none below
+       threshold); the adopted ``Z_NED`` should be treated with caution
+   * - ``Z_MISSING``
+     - 32
+     - NED's own default redshift was missing entirely; ``Z_NED`` was
+       adopted from NED's full list of redshift measurements instead
 
 .. note::
 
@@ -1017,6 +1039,11 @@ Multiple bits may be set simultaneously.
      - As ``NED_SUSPECT``, and its ``NED_FLAG`` also has ``Z_UNRESOLVED``
        set: no confident replacement redshift was found, so the adopted
        redshift may still be wrong
+   * - ``NED_MISSING``
+     - 8
+     - NED is the sole redshift measurement (no LVD or DESI value at all)
+       and its ``NED_FLAG`` has ``Z_MISSING`` set: NED had no default
+       redshift, so the adopted value came from NED's full redshift list
 
 ``OPTMASKBITS``, ``GALEXMASKBITS``, ``UNWISEMASKBITS``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

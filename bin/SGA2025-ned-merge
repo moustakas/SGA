@@ -23,18 +23,31 @@ NED_FLAG bits
   0x04  FLAG_BYPOS_FAIL   bypos also error / no-match           ->  result may be incomplete
   0x08  FLAG_Z_SUSPECT    adopted NED_Z > --z-swap-threshold     ->  alternates considered
   0x10  FLAG_Z_UNRESOLVED suspect but no confident replacement   ->  needs targeted VI
+  0x20  FLAG_Z_MISSING    no NED_Z at all in step 1              ->  adopted from
+                          RedshiftsOfObject instead (see below)
 
 The bypos columns NED_NAME, SEPARATION_ARCSEC, and NMATCHES are always written
 regardless of which source was chosen, for reference.
 
 Redshift override (optional --redshifts-glob input)
 ----------------------------------------------------
-NED occasionally assigns a bogus high-z "fiducial" redshift to an object (e.g.
-SDSS fiber contamination from a background source overlapping a nearby dwarf).
-When the adopted NED_Z exceeds --z-swap-threshold (default 0.4) and a
-RedshiftsOfObject query result is available for that SGAID (see
-SGA2025-ned-query --querytype redshifts), alternative measurements with
-z <= threshold are considered:
+This logic handles two distinct problems, both resolved against the full
+RedshiftsOfObject query result for the SGAID (see SGA2025-ned-query
+--querytype redshifts):
+
+  * FLAG_Z_SUSPECT: NED occasionally assigns a bogus high-z "fiducial"
+    redshift to an object (e.g. SDSS fiber contamination from a background
+    source overlapping a nearby dwarf). Triggered when the adopted NED_Z
+    exceeds --z-swap-threshold (default 0.4).
+  * FLAG_Z_MISSING: NED's own aggregated overview has no fiducial NED_Z at
+    all for the object (e.g. UGC 06451: the only overview redshift on file
+    is a stale/bogus WISE photo-z, but the object has no *default* NED_Z),
+    even though the full RedshiftsOfObject list has real measurements not
+    yet reflected in NED's own default. Triggered whenever NED_Z is missing,
+    regardless of --z-swap-threshold.
+
+In both cases, alternative measurements with z <= --z-swap-threshold are
+considered:
   1. Candidates are grouped into clusters of mutually agreeing measurements
      (relative gap |dz|/(1+z) < --z-cluster-tol, default 0.01).
   2. If one cluster is strictly the largest (including the trivial case of a
@@ -45,10 +58,14 @@ z <= threshold are considered:
      lowest-z candidate is adopted as a best guess and FLAG_Z_UNRESOLVED is
      set. FLAG_Z_UNRESOLVED is also set (with no change to NED_Z) when there
      are zero candidates at or below threshold.
-The original suspect value is preserved in NED_Z_ORIG; NED_Z_NCAND/NED_Z_NALT
-record the number of candidates and the size of the adopted cluster. This
-step is skipped gracefully (no flags set) when --redshifts-glob has no file
-for a region.
+For the FLAG_Z_SUSPECT case, the original suspect value is preserved in
+NED_Z_ORIG; for FLAG_Z_MISSING, NED_Z_ORIG stays NaN since there was nothing
+to replace. NED_Z_NCAND/NED_Z_NALT record the number of candidates and the
+size of the adopted cluster in either case. If NED_Z is missing and no
+candidates are found, NED_Z is left as NaN and no flag is set -- this is the
+ordinary case of a genuinely unmeasured object and should not be flagged.
+This step is skipped gracefully (no flags set) when --redshifts-glob has no
+file for a region.
 
 Outputs (written to --outdir)
 ------------------------------
@@ -84,6 +101,7 @@ FLAG_BYNAME_FAIL  = 0x02   # byname error/no-match -> used bypos
 FLAG_BYPOS_FAIL   = 0x04   # bypos also error/no-match -> result incomplete
 FLAG_Z_SUSPECT    = 0x08   # adopted NED_Z > z-swap-threshold -> alternates considered
 FLAG_Z_UNRESOLVED = 0x10   # suspect but no confident replacement found -> needs VI
+FLAG_Z_MISSING    = 0x20   # no NED_Z at all -> adopted from RedshiftsOfObject instead
 
 # ---------------------------------------------------------------------------
 # Column type classification
@@ -400,23 +418,34 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
             else:
                 cols[col].append(str(raw))
 
-        # Redshift override: NED sometimes assigns a bogus high fiducial
-        # redshift (e.g. SDSS fiber contamination from a background source);
-        # when the adopted default exceeds z_swap_threshold, look for a
-        # better answer in the object's full RedshiftsOfObject measurements.
-        zval   = cols['NED_Z'][-1]
-        z_orig = np.nan
-        n_cand = 0
-        n_alt  = 0
-        if not np.isnan(zval) and zval > z_swap_threshold:
-            flag |= FLAG_Z_SUSPECT
-            z_orig  = zval
+        # Redshift override: two distinct problems, both resolved against the
+        # object's full RedshiftsOfObject measurements.
+        #  - FLAG_Z_SUSPECT: NED assigned a bogus high fiducial redshift (e.g.
+        #    SDSS fiber contamination from a background source); triggered
+        #    when the adopted default exceeds z_swap_threshold.
+        #  - FLAG_Z_MISSING: NED's overview has no default NED_Z at all, even
+        #    though real measurements exist in the full query (e.g. UGC 06451).
+        zval      = cols['NED_Z'][-1]
+        z_orig    = np.nan
+        n_cand    = 0
+        n_alt     = 0
+        z_missing = np.isnan(zval)
+        z_suspect = (not z_missing) and zval > z_swap_threshold
+        if z_missing or z_suspect:
+            if z_suspect:
+                flag |= FLAG_Z_SUSPECT
+                z_orig = zval
             measurements = redshift_alts.get(sid)
             result = (resolve_redshift_override(measurements, z_swap_threshold, z_cluster_tol)
                       if measurements else None)
             if result is None:
-                flag |= FLAG_Z_UNRESOLVED
+                if z_suspect:
+                    flag |= FLAG_Z_UNRESOLVED
+                # z_missing with no candidates: leave NED_Z as NaN, no flag --
+                # this is the ordinary unmeasured case, not worth flagging.
             else:
+                if z_missing:
+                    flag |= FLAG_Z_MISSING
                 cols['NED_Z'][-1]     = result['z']
                 cols['NED_Z_UNC'][-1] = result['unc_z']
                 cols['NED_Z_REF'][-1] = result['reference']
@@ -458,6 +487,7 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     n_pfail  = int(np.sum((flags & FLAG_BYPOS_FAIL)   != 0))
     n_zsus   = int(np.sum((flags & FLAG_Z_SUSPECT)    != 0))
     n_zunres = int(np.sum((flags & FLAG_Z_UNRESOLVED) != 0))
+    n_zmiss  = int(np.sum((flags & FLAG_Z_MISSING)    != 0))
     n_any    = int(np.sum(flags != 0))
 
     sga_id_set  = set(int(x) for x in sga_id)
@@ -479,6 +509,7 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     print(f'    Z_SUSPECT    (0x08) : {n_zsus:>8,d}  ({pct(n_zsus):5.1f}%)  '
           f'(resolved: {n_zsus - n_zunres:,d})')
     print(f'    Z_UNRESOLVED (0x10) : {n_zunres:>8,d}  ({pct(n_zunres):5.1f}%)')
+    print(f'    Z_MISSING    (0x20) : {n_zmiss:>8,d}  ({pct(n_zmiss):5.1f}%)')
     print(f'    any flag set        : {n_any:>8,d}  ({pct(n_any):5.1f}%)')
     print()
     print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
