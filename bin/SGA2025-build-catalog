@@ -28,17 +28,17 @@ For each galaxy a single "best" DESI spectrum is selected:
 
 SDSS DR17 spectrum selection
 -----------------------------
-Unlike DESI above, quality selection happens upstream in
-SGA2025-desi-dr1-match --sdss, not here: that script already restricts
-matches to "best" extragalactic spectra (SPECPRIMARY, GALAXY/QSO, clean
-ZWARNING/ZWARNING_NOQSO) within a small fixed radius (3.5 arcsec default),
-so every row in SGA2025-SDSS-DR17-matches-{region}.fits is already usable.
-The only selection left here is picking the closest match (by SEP_ARCSEC)
-when more than one falls within the radius. If no match exists for a
-galaxy, Z_IVAR_SDSS=0 (no adopted SDSS redshift). This exists specifically
-to supersede NED's own copy of SDSS spectroscopy (see NED_FLAG
-Z_CENSORED_SDSS in SGA2025-ned-merge): NED doesn't propagate SDSS's own
-ZWARNING, so a direct match with real quality information is preferred.
+Quality selection mostly happens upstream in SGA2025-desi-dr1-match --sdss:
+that script already restricts matches to "best" extragalactic spectra
+(SPECPRIMARY, GALAXY/QSO, clean ZWARNING/ZWARNING_NOQSO) within a small
+fixed radius (3.5 arcsec default). Here, Z > 1.0 is additionally dropped as
+physically implausible for this sample (mirrors the DESI cut above), then
+the closest remaining match (by SEP_ARCSEC) is taken when more than one
+falls within the radius. If nothing survives, Z_IVAR_SDSS=0 (no adopted
+SDSS redshift). This exists specifically to supersede NED's own copy of
+SDSS spectroscopy (see NED_FLAG Z_CENSORED_SDSS in SGA2025-ned-merge): NED
+doesn't propagate SDSS's own ZWARNING, so a direct match with real quality
+information is preferred.
 
 The adopted redshift (Z) priority is LVD > DESI > SDSS > NED:
   - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
@@ -61,7 +61,10 @@ Z_FLAG bits
                                 own overview had no default redshift at all;
                                 the adopted Z came from SGA2025-ned-merge's
                                 RedshiftsOfObject override instead)
-  0x10  Z_FLAG_VI_REVIEWED     Z/Z_IVAR/Z_REF were set (or confirmed) by a
+  0x10  Z_FLAG_AUTO_NED_OVERRIDE  adopted DESI/SDSS Z > --ned-override-zmin
+                                was automatically replaced by NED's Z; see
+                                below
+  0x20  Z_FLAG_VI_REVIEWED     Z/Z_IVAR/Z_REF were set (or confirmed) by a
                                 manual VI pass; see --vi-redshifts below
 
 NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
@@ -76,6 +79,17 @@ these bits when NED is the sole measurement (no LVD, DESI, or SDSS value),
 since DISCREPANCY already covers cases where a second measurement exists to
 cross-check against; all three are intended as a signal for targeted visual
 inspection, not an automatic correction.
+
+Automatic NED override (--ned-override-zmin)
+----------------------------------------------
+This sample is overwhelmingly z < 0.3, and NED redshifts have already been
+purged of photo-z and SDSS-compiled values (see SGA2025-ned-merge), so a
+DESI/SDSS redshift above --ned-override-zmin (default 0.3) with an
+independent NED measurement on file is treated as a fiber landing on a
+background source: the adopted Z/Z_IVAR/Z_REF are replaced by NED's,
+unconditionally (not gated on Z_FLAG_DISCREPANCY -- some genuine mismatches
+fall just inside --vdiff-threshold). Runs before --vi-redshifts, so a VI
+pass can still override the auto-corrected value if needed.
 
 Manual VI overrides (optional --vi-redshifts input)
 -----------------------------------------------------
@@ -181,11 +195,13 @@ from SGA.logger import log, LOGFMT
 
 NED_Z_NOMINAL_ERR     = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
 FLOAT_SENTINEL        = -1.              # sentinel for floats without an IVAR companion
-Z_FLAG_DISCREPANCY    = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
-Z_FLAG_NED_SUSPECT    = 0x02             # sole measurement is NED; NED_FLAG Z_SUSPECT set
-Z_FLAG_NED_UNRESOLVED = 0x04             # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
-Z_FLAG_NED_MISSING    = 0x08             # sole measurement is NED; NED_FLAG Z_MISSING set
-Z_FLAG_VI_REVIEWED    = 0x10             # Z/Z_IVAR/Z_REF set or confirmed by --vi-redshifts
+Z_FLAG_DISCREPANCY      = 0x01           # |Delta cz (DESI, NED)| > vdiff_threshold
+Z_FLAG_NED_SUSPECT      = 0x02           # sole measurement is NED; NED_FLAG Z_SUSPECT set
+Z_FLAG_NED_UNRESOLVED   = 0x04           # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
+Z_FLAG_NED_MISSING      = 0x08           # sole measurement is NED; NED_FLAG Z_MISSING set
+Z_FLAG_AUTO_NED_OVERRIDE = 0x10          # adopted DESI/SDSS Z > --ned-override-zmin replaced by NED
+Z_FLAG_VI_REVIEWED      = 0x20           # Z/Z_IVAR/Z_REF set or confirmed by --vi-redshifts; last
+                                          # bit by convention -- the final, human-authoritative step
 
 # Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED / FLAG_Z_MISSING in SGA2025-ned-merge.
 NED_FLAG_Z_SUSPECT    = 0x08
@@ -764,9 +780,14 @@ def _select_sdss(rows):
 
     rows: numpy structured array -- all match rows for this SGAID, already
     restricted to "best" extragalactic spectra and a fixed search radius by
-    SGA2025-desi-dr1-match --sdss. The only remaining choice is the closest
-    match (by SEP_ARCSEC) when more than one falls within that radius.
+    SGA2025-desi-dr1-match --sdss. Drop Z > 1.0 (GALAXY or QSO) as physically
+    implausible for this sample, mirroring the DESI cut. Among the survivors,
+    the only remaining choice is the closest match (by SEP_ARCSEC) when more
+    than one falls within that radius. Returns None if none survive.
     """
+    rows = rows[rows['Z'] <= 1.0]
+    if len(rows) == 0:
+        return None
     return rows[np.argmin(rows['SEP_ARCSEC'])]
 
 
@@ -809,7 +830,7 @@ def _reorder_cols(tbl):
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                  desi_max_sep, lvd_catalog=None, parent_nocuts=None,
-                 vi_redshifts=None, lines=None):
+                 ned_override_zmin=0.3, vi_redshifts=None, lines=None):
     def emit(msg=''):
         print(msg)
         if lines is not None:
@@ -1092,11 +1113,12 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         # SDSS DR17 selection
         if sid in sdss_grp:
             sbest = _select_sdss(sdss_matches[sdss_grp[sid]])
-            zerr  = float(sbest['Z_ERR'])
-            sdss_arrs['SPECOBJID_SDSS'][i] = _strval(sbest['SPECOBJID'])
-            sdss_arrs['Z_SDSS'][i]         = float(sbest['Z'])
-            sdss_arrs['Z_IVAR_SDSS'][i]    = 1. / zerr**2 if zerr > 0. else 0.
-            sdss_arrs['CLASS_SDSS'][i]     = _strval(sbest['CLASS'])
+            if sbest is not None:
+                zerr  = float(sbest['Z_ERR'])
+                sdss_arrs['SPECOBJID_SDSS'][i] = _strval(sbest['SPECOBJID'])
+                sdss_arrs['Z_SDSS'][i]         = float(sbest['Z'])
+                sdss_arrs['Z_IVAR_SDSS'][i]    = 1. / zerr**2 if zerr > 0. else 0.
+                sdss_arrs['CLASS_SDSS'][i]     = _strval(sbest['CLASS'])
 
         # NED columns
         nrow = ned_by_sgaid.get(sid)
@@ -1236,6 +1258,20 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             dist_arrs['DIST'][i]      = dist_ned
             dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]  = 'NED'
+
+    # --- Automatic NED override for high-z DESI/SDSS (see docstring) -------
+    n_auto = 0
+    if z_ned_arr is not None and zivar_ned_arr is not None:
+        auto_mask = ((adopted_arrs['Z'] > ned_override_zmin) &
+                    np.isin(adopted_arrs['Z_REF'], ['DESI', 'SDSS']) &
+                    (zivar_ned_arr > 0.))
+        n_auto = int(np.sum(auto_mask))
+    if n_auto:
+        adopted_arrs['Z'][auto_mask]      = z_ned_arr[auto_mask]
+        adopted_arrs['Z_IVAR'][auto_mask] = zivar_ned_arr[auto_mask]
+        adopted_arrs['Z_REF'][auto_mask]  = 'NED'
+        adopted_arrs['Z_FLAG'][auto_mask] = Z_FLAG_AUTO_NED_OVERRIDE
+    log.info(f'  Auto NED override (DESI/SDSS Z>{ned_override_zmin:g}): {n_auto:,d} objects')
 
     # --- Apply VI worksheet overrides (see load_vi_redshifts) --------------
     if vi_lookup:
@@ -1536,6 +1572,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_ned_susp  = int(np.sum((flag_arr & Z_FLAG_NED_SUSPECT)    != 0))
     n_ned_unres = int(np.sum((flag_arr & Z_FLAG_NED_UNRESOLVED) != 0))
     n_ned_miss  = int(np.sum((flag_arr & Z_FLAG_NED_MISSING)    != 0))
+    n_auto_ned  = int(np.sum((flag_arr & Z_FLAG_AUTO_NED_OVERRIDE) != 0))
     n_vi_rev    = int(np.sum((flag_arr & Z_FLAG_VI_REVIEWED)    != 0))
     n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
@@ -1568,6 +1605,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
     emit(f'  Z_FLAG NED unresolved (sole) : {n_ned_unres:>8,d}  ({pct(n_ned_unres):5.1f}%)')
     emit(f'  Z_FLAG NED missing (sole)    : {n_ned_miss:>8,d}  ({pct(n_ned_miss):5.1f}%)')
+    emit(f'  Z_FLAG auto NED override     : {n_auto_ned:>8,d}  ({pct(n_auto_ned):5.1f}%)')
     emit(f'  Z_FLAG VI-reviewed           : {n_vi_rev:>8,d}  ({pct(n_vi_rev):5.1f}%)')
     emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     emit()
@@ -1740,6 +1778,10 @@ def main():
                         help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
                              'RA_INIT/DEC_INIT/DIAM_INIT/INIT_REF/BA_INIT/PA_INIT '
                              'from the original parent catalog geometry')
+    parser.add_argument('--ned-override-zmin', type=float, default=0.3,
+                        help='Adopted DESI/SDSS redshifts above this value are automatically '
+                             'replaced by an independent NED measurement, if one exists '
+                             '(default: 0.3)')
     parser.add_argument('--vi-redshifts',
                         help='Path to a VI worksheet CSV (see SGA2025-qa-redshifts) applied '
                              'after the normal Z/Z_IVAR/Z_REF resolution')
@@ -1763,6 +1805,7 @@ def main():
                      args.vdiff_threshold, args.desi_max_sep,
                      lvd_catalog=args.lvd_catalog,
                      parent_nocuts=args.parent_nocuts,
+                     ned_override_zmin=args.ned_override_zmin,
                      vi_redshifts=args.vi_redshifts, lines=lines)
 
     if args.region is None:
