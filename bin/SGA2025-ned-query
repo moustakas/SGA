@@ -418,7 +418,7 @@ async def _process_multi(session, sga_id, ned_name, endpoint, col_map, fields,
     rows, err = await _attempt(ned_name)
     if not rows and fallback_name and fallback_name != ned_name:
         fb_rows, fb_err = await _attempt(fallback_name)
-        if fb_rows:
+        if fb_rows or fb_err in ('', 'no_match'):
             rows, err, used_name = fb_rows, fb_err, fallback_name
 
     if not rows:
