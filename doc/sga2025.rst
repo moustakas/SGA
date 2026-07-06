@@ -732,10 +732,12 @@ spectra within the ellipse regardless of selection outcome.
 A single fixed-radius (3.5 arcsec) positional match against SDSS DR17
 ``specObj``, pre-filtered to ``SPECPRIMARY = 1``, ``CLASS`` in
 (``GALAXY``, ``QSO``), and clean redshift warnings (``ZWARNING_NOQSO = 0``
-for QSOs, ``ZWARNING = 0`` for galaxies). The closest match is kept when
-more than one falls within the radius. This match is independent of NED's
-own SDSS-derived redshifts (see ``NED_FLAG`` below) and takes priority over
-them, since NED does not propagate SDSS's own quality flags.
+for QSOs, ``ZWARNING = 0`` for galaxies). ``Z > 1.0`` is dropped as
+physically implausible for this sample (mirrors the DESI cut above), and
+the closest remaining match is kept when more than one falls within the
+radius. This match is independent of NED's own SDSS-derived redshifts (see
+``NED_FLAG`` below) and takes priority over them, since NED does not
+propagate SDSS's own quality flags.
 
 **NED redshift resolution**
 
@@ -752,6 +754,19 @@ Candidate measurements are grouped into clusters of mutually agreeing
 values; if one cluster dominates, its highest-quality measurement is
 adopted. Otherwise, or if no candidates exist, the result is flagged rather
 than silently trusted (see ``NED_FLAG`` / ``Z_FLAG`` in :ref:`bitmasks`).
+
+**Automatic NED override**
+
+This sample is overwhelmingly z < 0.3, so an adopted DESI/SDSS redshift
+above 0.3 with an independent NED measurement on file is treated as a fiber
+landing on a background source: the adopted redshift is replaced by NED's
+and flagged ``AUTO_NED_OVERRIDE`` (see :ref:`bitmasks`).
+
+**Manual VI overrides**
+
+A small residual of flagged redshifts (see ``Z_FLAG`` in :ref:`bitmasks`)
+are resolved by hand and fed back in as a worksheet CSV keyed by ``SGAID``,
+overriding or discarding the adopted redshift and setting ``VI_REVIEWED``.
 
 **Adopted distance (DIST, DIST_IVAR, DIST_REF)**
 
@@ -1016,6 +1031,14 @@ Multiple bits may be set simultaneously.
      - NED is the sole redshift measurement (no LVD, DESI, or SDSS value)
        and its ``NED_FLAG`` has ``Z_MISSING`` set: NED had no default
        redshift, so the adopted value came from NED's full redshift list
+   * - ``AUTO_NED_OVERRIDE``
+     - 16
+     - Adopted DESI/SDSS redshift exceeded 0.3 and was automatically
+       replaced by an independent NED measurement
+   * - ``VI_REVIEWED``
+     - 32
+     - Adopted redshift was set or confirmed by a manual visual-inspection
+       pass; the final, human-authoritative bit
 
 ``OPTMASKBITS``, ``GALEXMASKBITS``, ``UNWISEMASKBITS``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
