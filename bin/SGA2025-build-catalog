@@ -26,17 +26,34 @@ For each galaxy a single "best" DESI spectrum is selected:
 
   If no spectrum survives all filters, Z_IVAR_DESI=0 (no adopted DESI redshift).
 
-The adopted redshift (Z) priority is LVD > DESI > NED:
+SDSS DR17 spectrum selection
+-----------------------------
+Unlike DESI above, quality selection happens upstream in
+SGA2025-desi-dr1-match --sdss, not here: that script already restricts
+matches to "best" extragalactic spectra (SPECPRIMARY, GALAXY/QSO, clean
+ZWARNING/ZWARNING_NOQSO) within a small fixed radius (3.5 arcsec default),
+so every row in SGA2025-SDSS-DR17-matches-{region}.fits is already usable.
+The only selection left here is picking the closest match (by SEP_ARCSEC)
+when more than one falls within the radius. If no match exists for a
+galaxy, Z_IVAR_SDSS=0 (no adopted SDSS redshift). This exists specifically
+to supersede NED's own copy of SDSS spectroscopy (see NED_FLAG
+Z_CENSORED_SDSS in SGA2025-ned-merge): NED doesn't propagate SDSS's own
+ZWARNING, so a direct match with real quality information is preferred.
+
+The adopted redshift (Z) priority is LVD > DESI > SDSS > NED:
   - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
   - DESI when Z_IVAR_DESI > 0
+  - SDSS when Z_IVAR_SDSS > 0
   - NED  when Z_IVAR_NED  > 0
 
 Z_FLAG bits
 -----------
-  0x01  Z_FLAG_DISCREPANCY     any two measured redshifts differ by more than
+  0x01  Z_FLAG_DISCREPANCY     any two of the measured redshifts (LVD, DESI,
+                                SDSS, NED) differ by more than
                                 --vdiff-threshold km/s
-  0x02  Z_FLAG_NED_SUSPECT     NED is the sole redshift measurement (no LVD or
-                                DESI value at all) and NED_FLAG Z_SUSPECT is set
+  0x02  Z_FLAG_NED_SUSPECT     NED is the sole redshift measurement (no LVD,
+                                DESI, or SDSS value at all) and NED_FLAG
+                                Z_SUSPECT is set
   0x04  Z_FLAG_NED_UNRESOLVED  as above, and NED_FLAG Z_UNRESOLVED is set (no
                                 confident replacement was found by
                                 SGA2025-ned-merge; the adopted Z may be wrong)
@@ -53,10 +70,10 @@ and the value was adopted from the full RedshiftsOfObject query instead).
 Z_NED/Z_IVAR_NED are used as-is regardless of these bits -- unlike the DESI
 GALAXY Z>1.0 cut above, no implausibility filtering is applied to NED
 redshifts here. Z_FLAG_NED_SUSPECT/UNRESOLVED/MISSING (above) only propagate
-these bits when NED is the sole measurement, since DISCREPANCY already
-covers cases where a second measurement exists to cross-check against; all
-three are intended as a signal for targeted visual inspection, not an
-automatic correction.
+these bits when NED is the sole measurement (no LVD, DESI, or SDSS value),
+since DISCREPANCY already covers cases where a second measurement exists to
+cross-check against; all three are intended as a signal for targeted visual
+inspection, not an automatic correction.
 
 Z_COSMO (peculiar-velocity-corrected redshift)
 -----------------------------------------------
@@ -359,6 +376,8 @@ COL_ORDER = [
     # --- DESI spectroscopy ---
     'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
     'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
+    # --- SDSS DR17 spectroscopy ---
+    'SPECOBJID_SDSS', 'Z_SDSS', 'Z_IVAR_SDSS', 'CLASS_SDSS',
     # --- NED redshift and distance ---
     'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
     'NED_FLAG',
@@ -527,6 +546,21 @@ DESI_COLS = [
     ('DELTACHI2_DESI', np.float64, None),
     ('SPECTYPE_DESI',  'U6',       None),
     ('NSPEC_DESI',     np.int32,   None),
+]
+
+# SDSS DR17 columns added to the output: (name, numpy dtype, astropy unit).
+# SPECOBJID_SDSS is a string, not int64: SDSS's SPECOBJID is effectively
+# unsigned 64-bit (plate/mjd/fiber/run2d packed together) and some values
+# exceed signed int64 max, so it's carried through as-is (matches its dtype
+# in specObj-dr17.fits).
+# No NSPEC_SDSS/ZWARNING_SDSS -- SGA2025-desi-dr1-match --sdss already
+# selects "best" spectra and the closest match, so there's nothing left to
+# re-filter or re-rank on downstream, unlike DESI's raw multi-spectrum dump.
+SDSS_COLS = [
+    ('SPECOBJID_SDSS', 'U22',      None),
+    ('Z_SDSS',         np.float64, None),
+    ('Z_IVAR_SDSS',    np.float64, None),
+    ('CLASS_SDSS',     'U6',       None),
 ]
 
 # Adopted redshift columns: (name, numpy dtype, astropy unit)
@@ -709,6 +743,17 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
 
     # Step 3: highest DELTACHI2
     return pool[np.argmax(pool['DELTACHI2'])]
+
+
+def _select_sdss(rows):
+    """Select the best SDSS DR17 spectrum for one SGA galaxy.
+
+    rows: numpy structured array -- all match rows for this SGAID, already
+    restricted to "best" extragalactic spectra and a fixed search radius by
+    SGA2025-desi-dr1-match --sdss. The only remaining choice is the closest
+    match (by SEP_ARCSEC) when more than one falls within that radius.
+    """
+    return rows[np.argmin(rows['SEP_ARCSEC'])]
 
 
 def _reorder_cols(tbl):
@@ -896,6 +941,23 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         grp[int(matches['SGAID'][i])].append(i)
     log.info(f'  {len(grp):,d} unique SGAIDs with DESI matches')
 
+    # --- SDSS DR17 matches (optional; graceful if not yet generated) ------
+    sdss_match_path = os.path.join(redshiftdir,
+                                   f'SGA2025-SDSS-DR17-matches-{region}.fits')
+    sdss_matches = None
+    sdss_grp     = {}
+    if os.path.exists(sdss_match_path):
+        log.info(f'  Loading {sdss_match_path}')
+        sdss_matches = fitsio.read(sdss_match_path)
+        log.info(f'  {len(sdss_matches):,d} SDSS match rows')
+        sdss_grp = defaultdict(list)
+        for i in range(len(sdss_matches)):
+            sdss_grp[int(sdss_matches['SGAID'][i])].append(i)
+        log.info(f'  {len(sdss_grp):,d} unique SGAIDs with SDSS matches')
+    else:
+        log.info(f'  {sdss_match_path} not found, skipping SDSS redshifts '
+                 '(run SGA2025-desi-dr1-match --sdss to generate)')
+
     # --- Pre-allocate output arrays ---------------------------------------
     # DESI: redshifts/IVARs sentinel 0., IDs sentinel -1, strings ''
     desi_arrs = {
@@ -908,6 +970,14 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'DELTACHI2_DESI': np.full(n, FLOAT_SENTINEL, np.float64),
         'SPECTYPE_DESI':  np.full(n, '',            dtype='U6'),
         'NSPEC_DESI':     ndesi_arr,
+    }
+
+    # SDSS: redshifts/IVARs sentinel 0., strings '' (including SPECOBJID_SDSS)
+    sdss_arrs = {
+        'SPECOBJID_SDSS': np.full(n, '', dtype='U22'),
+        'Z_SDSS':         np.zeros(n,    np.float64),
+        'Z_IVAR_SDSS':    np.zeros(n,    np.float64),
+        'CLASS_SDSS':     np.full(n, '', dtype='U6'),
     }
 
     # NED: columns with IVAR companions use 0. sentinel; others use FLOAT_SENTINEL
@@ -974,6 +1044,15 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 desi_arrs['ZWARN_DESI'][i]     = int(best['ZWARN'])
                 desi_arrs['DELTACHI2_DESI'][i] = float(best['DELTACHI2'])
                 desi_arrs['SPECTYPE_DESI'][i]  = _strval(best['SPECTYPE'])
+
+        # SDSS DR17 selection
+        if sid in sdss_grp:
+            sbest = _select_sdss(sdss_matches[sdss_grp[sid]])
+            zerr  = float(sbest['Z_ERR'])
+            sdss_arrs['SPECOBJID_SDSS'][i] = _strval(sbest['SPECOBJID'])
+            sdss_arrs['Z_SDSS'][i]         = float(sbest['Z'])
+            sdss_arrs['Z_IVAR_SDSS'][i]    = 1. / zerr**2 if zerr > 0. else 0.
+            sdss_arrs['CLASS_SDSS'][i]     = _strval(sbest['CLASS'])
 
         # NED columns
         nrow = ned_by_sgaid.get(sid)
@@ -1049,9 +1128,11 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 if np.isfinite(mean_err) and mean_err > 0.:
                     dist_arrs['DIST_IVAR_LVD'][i] = np.float32(1. / mean_err**2)
 
-        # Adopted redshift: LVD > DESI > NED
+        # Adopted redshift: LVD > DESI > SDSS > NED
         zivar_desi = desi_arrs['Z_IVAR_DESI'][i]
         z_desi     = desi_arrs['Z_DESI'][i]
+        zivar_sdss = sdss_arrs['Z_IVAR_SDSS'][i]
+        z_sdss     = sdss_arrs['Z_SDSS'][i]
         zivar_lvd  = lvd_z_arrs['Z_IVAR_LVD'][i]
         z_lvd      = lvd_z_arrs['Z_LVD'][i]
         zivar_ned  = zivar_ned_arr[i] if zivar_ned_arr is not None else 0.
@@ -1065,6 +1146,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             adopted_arrs['Z'][i]      = z_desi
             adopted_arrs['Z_IVAR'][i] = zivar_desi
             adopted_arrs['Z_REF'][i]  = 'DESI'
+        elif zivar_sdss > 0.:
+            adopted_arrs['Z'][i]      = z_sdss
+            adopted_arrs['Z_IVAR'][i] = zivar_sdss
+            adopted_arrs['Z_REF'][i]  = 'SDSS'
         elif zivar_ned > 0.:
             adopted_arrs['Z'][i]      = z_ned
             adopted_arrs['Z_IVAR'][i] = zivar_ned
@@ -1074,6 +1159,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         z_valid = []
         if z_lvd  != 0.:   z_valid.append(z_lvd)
         if zivar_desi > 0.: z_valid.append(z_desi)
+        if zivar_sdss > 0.: z_valid.append(z_sdss)
         if zivar_ned  > 0.: z_valid.append(z_ned)
         for j in range(len(z_valid) - 1):
             for zb in z_valid[j + 1:]:
@@ -1081,8 +1167,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
 
         # Z_FLAG: propagate NED_FLAG when NED is the *sole* redshift measurement
-        # (no LVD or DESI value at all, so DISCREPANCY above can never fire and
-        # would otherwise silently miss a still-suspect/unresolved NED redshift).
+        # (no LVD, DESI, or SDSS value at all, so DISCREPANCY above can never
+        # fire and would otherwise silently miss a still-suspect/unresolved
+        # NED redshift).
         if len(z_valid) == 1 and zivar_ned > 0.:
             ned_flag = int(ned_arrs['NED_FLAG'][i]) if 'NED_FLAG' in ned_arrs else 0
             if ned_flag & NED_FLAG_Z_SUSPECT:
@@ -1298,6 +1385,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     for name, dtype, unit in DESI_COLS:
         out.add_column(Column(desi_arrs[name], name=name, unit=unit))
 
+    # SDSS columns
+    for name, dtype, unit in SDSS_COLS:
+        out.add_column(Column(sdss_arrs[name], name=name, unit=unit))
+
     # NED columns: Z_IVAR_NED after Z_NED; DIST_IVAR_NED after DIST_NED
     for src, dst, unit in NED_CARRY:
         if dst not in ned_arrs:
@@ -1372,6 +1463,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     flag_arr   = adopted_arrs['Z_FLAG']
 
     n_src_desi  = int(np.sum(src_arr == 'DESI'))
+    n_src_sdss  = int(np.sum(src_arr == 'SDSS'))
     n_src_lvd   = int(np.sum(src_arr == 'LVD'))
     n_src_ned   = int(np.sum(src_arr == 'NED'))
     n_src_none  = int(np.sum(src_arr == ''))
@@ -1398,6 +1490,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
               ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
     emit()
     emit(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    emit(f'  Z_REF = SDSS : {n_src_sdss:>8,d}  ({pct(n_src_sdss):5.1f}%)')
     emit(f'  Z_REF = LVD  : {n_src_lvd:>8,d}  ({pct(n_src_lvd):5.1f}%)')
     emit(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
     emit(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
@@ -1570,7 +1663,7 @@ def main():
     parser.add_argument('--vdiff-threshold', type=float, default=1000.,
                         help='DESI/NED velocity discrepancy threshold in km/s '
                              '(default: 1000)')
-    parser.add_argument('--desi-max-sep', type=float, default=3.,
+    parser.add_argument('--desi-max-sep', type=float, default=3.5,
                         help='Max separation between SGA center and DESI '
                              'TARGET_RA/DEC in arcsec (default: 3)')
     parser.add_argument('--lvd-catalog',
