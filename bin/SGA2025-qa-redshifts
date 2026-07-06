@@ -1,160 +1,79 @@
 #!/usr/bin/env python
 """
-SGA2025-qa-redshifts: audit the high-redshift tail of the adopted SGA2025 Z
-column and produce a prioritized visual-inspection (VI) candidate list.
+SGA2025-qa-redshifts: find high-redshift SGA2025 objects worth a human look,
+and write a VI worksheet that SGA2025-build-catalog can read back in.
 
-Background
-----------
-The adopted redshift Z (see SGA2025-build-catalog) is drawn from LVD, DESI,
-or NED, in that priority order. A small tail of adopted redshifts are wrong
--- e.g. a bogus NED photometric-redshift "fiducial" value, or a DESI/NED
-fiber landing on a background source instead of a large diffuse SGA target.
-This script does not change any catalog values; it only reports on the
-existing Z/Z_FLAG/NED_FLAG columns (see SGA2025-ned-merge and
-SGA2025-build-catalog for where those are set) and writes out a prioritized
-CSV of objects worth a human look.
+This script does not change any catalog values. It classifies each
+high-redshift object into exactly one action category and writes a CSV
+worksheet -- fill in the VI_* columns by hand, then pass the same file to
+SGA2025-build-catalog --vi-redshifts to apply your decisions.
 
 Population and threshold
 -------------------------
-By default this audits every row of the merged, non-deduplicated catalog
-(fullsample from read_sga_sample, i.e. all group members, not just
-GROUP_PRIMARY) with Z_IVAR > 0 and Z above a threshold. The threshold
-defaults to the --percentile-th percentile of the Z distribution (99th by
-default) but can be pinned with --z-threshold instead.
+Audits every row of the merged, non-deduplicated catalog (fullsample from
+read_sga_sample, i.e. all group members, not just GROUP_PRIMARY) with
+Z_IVAR > 0 and Z above --z-threshold (default: the --percentile-th
+percentile of the Z distribution, 99th by default).
 
-Tiers
------
-Tier 1 (already flagged, act now): Z_FLAG has DISCREPANCY (0x01, two
-  independent measurements disagree by more than build-catalog's
-  --vdiff-threshold) or NED_UNRESOLVED (0x04, NED's own redshift-override
-  logic in SGA2025-ned-merge found disagreeing alternates and could not
-  confidently replace the adopted value) set.
+Action categories (mutually exclusive)
+---------------------------------------
+OVERRIDE   Z_FLAG has DISCREPANCY set: at least one other source (LVD,
+           DESI, SDSS, or NED -- see the Z_{SRC} columns in the worksheet)
+           has an independently measured redshift that disagrees with the
+           adopted one by more than build-catalog's --vdiff-threshold. The
+           alternative value is already sitting in the same row; decide
+           which (if either) is right.
 
-Tier 2 (DESI, unverifiable): Z_REF = DESI, Z >= --desi-alt-threshold
-  (default 0.3), and no independent NED redshift exists for the object to
-  cross-check against. DESI's own quality flags (ZWARN, DELTACHI2) do not
-  discriminate real high-z fits from fiber-contamination fits, so these
-  need a direct look rather than a numeric quality cut.
+DISCARD_UNRESOLVED   Z_REF = NED and NED_FLAG has Z_UNRESOLVED set:
+           SGA2025-ned-merge already tried and failed to find a confident
+           replacement among NED's own redshift measurements. No
+           alternative exists in the catalog; the only options are to
+           accept NED's best guess or discard it.
 
-Tier 3 (NED, never checked): Z_REF = NED, no NED_FLAG bit set at all, and
-  Z is below --ned-swap-threshold (default 0.4, matching SGA2025-ned-merge's
-  --z-swap-threshold). SGA2025-ned-merge's redshift-override logic only
-  reconsiders NED_Z above that threshold, so this bucket has never been
-  checked against the object's full RedshiftsOfObject measurements. This
-  is usually the largest bucket; the NED_Z_REF breakdown (printed
-  separately, not gated by --write-candidates) shows how much of it traces
-  to known photometric-redshift catalogs (e.g. WISE, 2MPZ) prone to
-  catastrophic outliers for extended, low-surface-brightness galaxies.
+DISCARD_UNVERIFIED   Z_REF is DESI or SDSS, it is the only measurement for
+           this object (no LVD/other DESI or SDSS/NED value to cross-check
+           against), and Z >= --sole-threshold. Neither DESI's nor SDSS's
+           own quality flags (ZWARN, DELTACHI2) can tell a real high-z
+           fit from a fiber landing on a background source, so these need
+           a direct look; there is no alternative to swap in.
 
-Cross-checking DESI against NED (informational only; does not gate any
-tier): for DESI-sourced high-z objects with an independent NED redshift,
-reports how many agree/disagree by more than --disagree-dz. This is
-distinct from the catalog's own Z_FLAG DISCREPANCY bit, which uses an
-absolute km/s threshold (--vdiff-threshold in SGA2025-build-catalog) rather
-than a relative-in-z one, and only fires when NED is *not* the sole
-measurement.
-
-Outputs
--------
-Prints a set of summary tables to stdout (redirect for a log). Optionally
-writes a CSV of Tier 1 + Tier 2 + Tier 3 candidates to --write-candidates
-for hand-inspection or a VI queue, one row per (object, tier) pair -- an
-object flagged by more than one tier gets more than one row.
+VI worksheet
+------------
+Written to --write-candidates, one row per flagged object, sorted by
+action then descending Z. Columns starting with VI_ are blank -- fill in:
+  VI_STATUS  'ok' (confirmed correct, no change), 'discard' (zero out the
+             redshift), or 'override' (replace with VI_Z/VI_Z_IVAR)
+  VI_Z, VI_Z_IVAR   required when VI_STATUS = 'override'
+  VI_NOTES   free text
+Rows with a blank VI_STATUS are left untouched by SGA2025-build-catalog
+--vi-redshifts, so the same file can be re-run through this pass repeatedly
+as you work through it.
 
 Examples
 --------
-  SGA2025-qa-redshifts
-  SGA2025-qa-redshifts --percentile 99.5 --write-candidates zqa-candidates.csv
-  SGA2025-qa-redshifts --z-threshold 0.2 --desi-alt-threshold 0.3 \\
-      --write-candidates zqa-candidates.csv
+  SGA2025-qa-redshifts --write-candidates zqa-vi.csv
+  SGA2025-qa-redshifts --z-threshold 0.2 --sole-threshold 0.3 \\
+      --write-candidates zqa-vi.csv
 """
 import argparse
-from collections import Counter
 
 import numpy as np
+from astropy.table import Column
 
 from SGA.SGA import read_sga_sample
 from SGA.logger import log
 
 # Must match bin/SGA2025-ned-merge.
-NED_FLAG_LARGE_SEP    = 0x01
-NED_FLAG_BYNAME_FAIL  = 0x02
-NED_FLAG_BYPOS_FAIL   = 0x04
-NED_FLAG_Z_SUSPECT    = 0x08
 NED_FLAG_Z_UNRESOLVED = 0x10
-NED_FLAG_Z_MISSING    = 0x20
 
 # Must match bin/SGA2025-build-catalog.
-Z_FLAG_DISCREPANCY    = 0x01
-Z_FLAG_NED_SUSPECT    = 0x02
-Z_FLAG_NED_UNRESOLVED = 0x04
-Z_FLAG_NED_MISSING    = 0x08
+Z_FLAG_DISCREPANCY = 0x01
 
 CANDIDATE_COLS = [
     'SGAID', 'GALAXY', 'REGION', 'Z', 'Z_REF', 'Z_FLAG', 'NED_FLAG',
-    'Z_NED', 'Z_REF_NED', 'Z_DESI', 'SPECTYPE_DESI', 'ZWARN_DESI',
-    'DELTACHI2_DESI', 'D26',
+    'Z_LVD', 'Z_DESI', 'Z_SDSS', 'Z_NED', 'D26',
 ]
-
-
-def zbin_table(z, zref, nedflag, bins, labels):
-    """Print a table of NED_FLAG status (unresolved/suspect-only/clean) by
-    redshift bin, for the NED-sourced subset."""
-    unresolved = (nedflag & NED_FLAG_Z_UNRESOLVED) != 0
-    suspect_only = ((nedflag & NED_FLAG_Z_SUSPECT) != 0) & ~unresolved
-    clean = (nedflag & (NED_FLAG_Z_SUSPECT | NED_FLAG_Z_UNRESOLVED)) == 0
-
-    print(f"  {'z range':10} {'total':>7} {'unresolved':>11} {'suspect_only':>13} {'clean (unchecked)':>18}")
-    for lo, hi, lab in zip(bins[:-1], bins[1:], labels):
-        m = (z >= lo) & (z < hi)
-        print(f"  {lab:10} {m.sum():7d} {(m & unresolved).sum():11d} "
-              f"{(m & suspect_only).sum():13d} {(m & clean).sum():18d}")
-    print(f"  {'total':10} {len(z):7d} {unresolved.sum():11d} "
-          f"{suspect_only.sum():13d} {clean.sum():18d}")
-
-
-def ned_ref_report(z_ref_ned, top=15):
-    """Print the most common NED_Z_REF bibcodes for a subset -- a stand-in
-    for identifying photometric-redshift-catalog provenance (e.g. WISE's
-    '...wise.rept...', Bilicki+2014 2MPZ '2014ApJS..210....9B') without a
-    hardcoded catalog blocklist."""
-    counts = Counter(str(r) for r in z_ref_ned)
-    n = len(z_ref_ned)
-    print(f"  {'n':>7}  {'frac':>6}  NED_Z_REF")
-    for ref, c in counts.most_common(top):
-        print(f"  {c:7d}  {100.*c/n:5.1f}%  {ref!r}")
-
-
-def desi_ned_crosscheck(z, z_ned, ivar_ned, disagree_dz):
-    has_alt = ivar_ned > 0
-    n_alt = int(np.sum(has_alt))
-    print(f'  DESI objects with an independent NED redshift on file : {n_alt:6d}')
-    if n_alt:
-        dz = np.abs(z[has_alt] - z_ned[has_alt])
-        n_bad = int(np.sum(dz > disagree_dz))
-        print(f'    median |Z_DESI - Z_NED|                          : {np.median(dz):.5f}')
-        print(f'    n with |Z_DESI - Z_NED| > {disagree_dz:<5.3f}                : {n_bad:6d}')
-
-
-def write_candidates(t, tier_masks, outpath):
-    rows = []
-    tiers = []
-    for tier, mask in tier_masks.items():
-        idx = np.where(mask)[0]
-        rows.append(idx)
-        tiers.extend([tier] * len(idx))
-    if not rows or not any(len(r) for r in rows):
-        log.info(f'  No candidates in any tier -- not writing {outpath}')
-        return
-    all_idx = np.concatenate(rows)
-
-    out = t[CANDIDATE_COLS][all_idx]
-    out['TIER'] = tiers
-    # Sort by tier, then descending Z, for a natural VI queue order.
-    order = np.lexsort((-np.array(out['Z']), np.array(out['TIER'])))
-    out = out[order]
-    out.write(outpath, format='csv', overwrite=True)
-    log.info(f'  Wrote {len(out):,d} candidate rows ({len(set(all_idx)):,d} unique objects) to {outpath}')
+VI_COLS = ['VI_STATUS', 'VI_Z', 'VI_Z_IVAR', 'VI_NOTES']
 
 
 def main():
@@ -172,20 +91,11 @@ def main():
                              'the high-z threshold when --z-threshold is not given (default: 99)')
     parser.add_argument('--z-threshold', type=float, default=None,
                         help='Explicit redshift threshold, overriding --percentile')
-    parser.add_argument('--ned-swap-threshold', type=float, default=0.4,
-                        help='Must match --z-swap-threshold in SGA2025-ned-merge; NED '
-                             'redshifts above this were already reconsidered there (default: 0.4)')
-    parser.add_argument('--desi-alt-threshold', type=float, default=0.3,
-                        help='Tier-2 cutoff: DESI redshifts at or above this value with no '
-                             'independent NED cross-check are reported as VI candidates (default: 0.3)')
-    parser.add_argument('--disagree-dz', type=float, default=0.05,
-                        help='|Delta z| above which an informational DESI/NED cross-check is '
-                             'reported as disagreeing (default: 0.05)')
-    parser.add_argument('--ned-ref-report-top', type=int, default=15,
-                        help='Number of NED_Z_REF bibcodes to list in the Tier-3 provenance '
-                             'breakdown (default: 15)')
+    parser.add_argument('--sole-threshold', type=float, default=0.3,
+                        help='DISCARD_UNVERIFIED cutoff: sole-source DESI/SDSS redshifts at '
+                             'or above this value are flagged for VI (default: 0.3)')
     parser.add_argument('--write-candidates', default=None,
-                        help='Path to write a CSV of Tier 1/2/3 VI candidates')
+                        help='Path to write the VI worksheet CSV')
     args = parser.parse_args()
 
     sample, fullsample = read_sga_sample(version=args.version)
@@ -193,13 +103,15 @@ def main():
     log.info(f'Auditing {len(t):,d} objects '
              f'({"GROUP_PRIMARY only" if args.primary_only else "full sample"})')
 
-    z       = np.array(t['Z'])
-    ivar    = np.array(t['Z_IVAR'])
-    zref    = np.array(t['Z_REF'])
-    zflag   = np.array(t['Z_FLAG'])
-    nedflag = np.array(t['NED_FLAG'])
-    z_ned   = np.array(t['Z_NED'])
-    ivar_ned = np.array(t['Z_IVAR_NED'])
+    z        = np.array(t['Z'])
+    ivar     = np.array(t['Z_IVAR'])
+    zref     = np.array(t['Z_REF'])
+    zflag    = np.array(t['Z_FLAG'])
+    nedflag  = np.array(t['NED_FLAG'])
+    ivar_lvd  = np.array(t['Z_IVAR_LVD'])
+    ivar_desi = np.array(t['Z_IVAR_DESI'])
+    ivar_sdss = np.array(t['Z_IVAR_SDSS'])
+    ivar_ned  = np.array(t['Z_IVAR_NED'])
 
     has_z = ivar > 0
     if args.z_threshold is not None:
@@ -208,55 +120,53 @@ def main():
         z_threshold = float(np.percentile(z[has_z], args.percentile))
     hi = has_z & (z > z_threshold)
 
+    n_valid = ((ivar_lvd > 0).astype(int) + (ivar_desi > 0).astype(int) +
+               (ivar_sdss > 0).astype(int) + (ivar_ned > 0).astype(int))
+
+    override           = hi & ((zflag & Z_FLAG_DISCREPANCY) != 0)
+    discard_unresolved = hi & (zref == 'NED') & ((nedflag & NED_FLAG_Z_UNRESOLVED) != 0)
+    discard_unverified = (hi & (n_valid == 1) & np.isin(zref, ['DESI', 'SDSS']) &
+                          (z >= args.sole_threshold))
+
+    action = np.full(len(t), '', dtype='U20')
+    action[override]           = 'OVERRIDE'
+    action[discard_unresolved] = 'DISCARD_UNRESOLVED'
+    action[discard_unverified] = 'DISCARD_UNVERIFIED'
+    flagged = action != ''
+
     print(f'\n--- SGA2025-qa-redshifts (n={len(t):,d}, Z_IVAR>0: {int(has_z.sum()):,d}) ---')
     print(f'z threshold = {z_threshold:.4f} '
           f'({"explicit" if args.z_threshold is not None else f"{args.percentile:g}th percentile"})')
-    print(f'n(Z_IVAR>0, Z>{z_threshold:.4f}) = {int(hi.sum()):,d}')
+    print(f'n(Z_IVAR>0, Z>{z_threshold:.4f}) = {int(hi.sum()):,d}\n')
 
-    print('\nBy Z_REF:')
+    print('By Z_REF:')
     for src in sorted(set(zref[hi])):
         m = hi & (zref == src)
         print(f'  {src or "(none)":8s}: {int(m.sum()):6,d}  '
               f'(min={z[m].min():.4f} median={np.median(z[m]):.4f} max={z[m].max():.4f})')
 
-    # --- NED: NED_FLAG status by z bin -------------------------------------
-    m_ned = hi & (zref == 'NED')
-    print(f'\nNED-sourced ({int(m_ned.sum()):,d}), NED_FLAG status by z bin:')
-    bins = [z_threshold, 2 * z_threshold, 4 * z_threshold, 1.0, 2.0, np.inf]
-    bins = sorted(set(b for b in bins if b > z_threshold) | {z_threshold})
-    labels = [f'{lo:.2f}-{hi_:.2f}' if np.isfinite(hi_) else f'{lo:.2f}+'
-              for lo, hi_ in zip(bins[:-1], bins[1:])]
-    zbin_table(z[m_ned], zref[m_ned], nedflag[m_ned], bins, labels)
-
-    # --- NED Tier 3: unchecked because below the ned-merge swap threshold --
-    tier3 = m_ned & (nedflag == 0) & (z < args.ned_swap_threshold)
-    print(f'\nTier 3 -- NED, never checked against alternates '
-          f'(no NED_FLAG bit, Z < {args.ned_swap_threshold:g}): {int(tier3.sum()):,d}')
-    if tier3.sum():
-        print(f'  Top {args.ned_ref_report_top} NED_Z_REF bibcodes in this bucket '
-              '(look for known photo-z catalogs):')
-        ned_ref_report(np.array(t['Z_REF_NED'])[tier3], top=args.ned_ref_report_top)
-
-    # --- DESI: cross-check against independent NED, and sole-source tail --
-    m_desi = hi & (zref == 'DESI')
-    print(f'\nDESI-sourced ({int(m_desi.sum()):,d}):')
-    desi_ned_crosscheck(z[m_desi], z_ned[m_desi], ivar_ned[m_desi], args.disagree_dz)
-
-    tier2 = m_desi & (z >= args.desi_alt_threshold) & (ivar_ned == 0)
-    n_desi_thresh = int(np.sum(m_desi & (z >= args.desi_alt_threshold)))
-    print(f'  n(Z_DESI >= {args.desi_alt_threshold:g})                             : {n_desi_thresh:6d}')
-    print(f'  Tier 2 -- DESI >= {args.desi_alt_threshold:g}, no independent NED check : {int(tier2.sum()):6d}')
-
-    # --- Tier 1: already flagged by the catalog itself ---------------------
-    tier1 = hi & ((zflag & (Z_FLAG_DISCREPANCY | Z_FLAG_NED_UNRESOLVED)) != 0)
-    print(f'\nTier 1 -- already flagged (Z_FLAG DISCREPANCY or NED_UNRESOLVED): {int(tier1.sum()):,d}')
-
-    n_union = int(np.sum(tier1 | tier2 | tier3))
-    print(f'\nUnion of all tiers: {n_union:,d} objects out of {int(hi.sum()):,d} high-z rows '
-          f'({100.*n_union/hi.sum():.1f}%)')
+    print('\nAction categories:')
+    print(f'  OVERRIDE            : {int(override.sum()):6,d}  (independent measurements disagree)')
+    print(f'  DISCARD_UNRESOLVED  : {int(discard_unresolved.sum()):6,d}  '
+          f'(sole NED measurement, ned-merge could not resolve it)')
+    print(f'  DISCARD_UNVERIFIED  : {int(discard_unverified.sum()):6,d}  '
+          f'(sole DESI/SDSS measurement, no cross-check possible)')
+    print(f'  Total flagged for VI: {int(flagged.sum()):6,d} / {int(hi.sum()):,d} '
+          f'({100.*flagged.sum()/hi.sum():.1f}%)')
 
     if args.write_candidates:
-        write_candidates(t, {'1': tier1, '2': tier2, '3': tier3}, args.write_candidates)
+        if not np.any(flagged):
+            log.info(f'  No candidates -- not writing {args.write_candidates}')
+            return
+        idx = np.where(flagged)[0]
+        out = t[CANDIDATE_COLS][idx]
+        out.add_column(Column(action[idx], name='ACTION_HINT'), index=1)
+        for col in VI_COLS:
+            out[col] = np.full(len(out), '', dtype='U40')
+        order = np.lexsort((-np.array(out['Z']), np.array(out['ACTION_HINT'])))
+        out = out[order]
+        out.write(args.write_candidates, format='csv', overwrite=True)
+        log.info(f'  Wrote {len(out):,d} VI candidates to {args.write_candidates}')
 
 
 if __name__ == '__main__':

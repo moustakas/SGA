@@ -717,7 +717,7 @@ Priority order **LVD > DESI > SDSS > NED**:
 
 **DESI DR1 spectrum selection**
 
-Applied to all spectra within 3 arcsec of the SGA position:
+Applied to all spectra within 3.5 arcsec of the SGA position:
 
 1. Keep only ``ZCAT_PRIMARY = True``.
 2. Drop ``SPECTYPE = STAR``, and any ``GALAXY``/``QSO`` spectrum with ``Z > 1.0``.
@@ -951,7 +951,7 @@ Multiple bits may be set simultaneously.
      - Description
    * - ``LARGE_SEP``
      - 1
-     - Byname positional offset exceeds threshold (3 arcsec); bypos result
+     - Byname positional offset exceeds threshold (3.5 arcsec); bypos result
        used instead
    * - ``BYNAME_FAIL``
      - 2

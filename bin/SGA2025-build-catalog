@@ -61,6 +61,8 @@ Z_FLAG bits
                                 own overview had no default redshift at all;
                                 the adopted Z came from SGA2025-ned-merge's
                                 RedshiftsOfObject override instead)
+  0x10  Z_FLAG_VI_REVIEWED     Z/Z_IVAR/Z_REF were set (or confirmed) by a
+                                manual VI pass; see --vi-redshifts below
 
 NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
 SGA2025-ned-merge) may include Z_SUSPECT (0x08, adopted NED_Z exceeded the
@@ -74,6 +76,16 @@ these bits when NED is the sole measurement (no LVD, DESI, or SDSS value),
 since DISCREPANCY already covers cases where a second measurement exists to
 cross-check against; all three are intended as a signal for targeted visual
 inspection, not an automatic correction.
+
+Manual VI overrides (optional --vi-redshifts input)
+-----------------------------------------------------
+--vi-redshifts points at a VI worksheet CSV (see SGA2025-qa-redshifts),
+applied after the normal LVD/DESI/SDSS/NED resolution above, per SGAID, by
+its VI_STATUS column: 'discard' zeroes Z/Z_IVAR and blanks Z_REF; 'override'
+sets Z/Z_IVAR from VI_Z/VI_Z_IVAR and Z_REF='VI'; 'ok' leaves Z/Z_IVAR/Z_REF
+unchanged. All three set Z_FLAG_VI_REVIEWED and clear any other Z_FLAG bits
+(the issue that triggered VI is resolved). Rows with a blank VI_STATUS are
+skipped, so a partially-completed worksheet can be applied repeatedly.
 
 Z_COSMO (peculiar-velocity-corrected redshift)
 -----------------------------------------------
@@ -139,6 +151,7 @@ SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/
 """
 import os
 import re
+import csv
 import logging
 import argparse
 import warnings
@@ -172,6 +185,7 @@ Z_FLAG_DISCREPANCY    = 0x01             # |Delta cz (DESI, NED)| > vdiff_thresh
 Z_FLAG_NED_SUSPECT    = 0x02             # sole measurement is NED; NED_FLAG Z_SUSPECT set
 Z_FLAG_NED_UNRESOLVED = 0x04             # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
 Z_FLAG_NED_MISSING    = 0x08             # sole measurement is NED; NED_FLAG Z_MISSING set
+Z_FLAG_VI_REVIEWED    = 0x10             # Z/Z_IVAR/Z_REF set or confirmed by --vi-redshifts
 
 # Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED / FLAG_Z_MISSING in SGA2025-ned-merge.
 NED_FLAG_Z_SUSPECT    = 0x08
@@ -756,6 +770,30 @@ def _select_sdss(rows):
     return rows[np.argmin(rows['SEP_ARCSEC'])]
 
 
+def load_vi_redshifts(path):
+    """Load a VI worksheet CSV (see SGA2025-qa-redshifts).
+
+    Returns dict[int SGAID -> dict(status, z, z_ivar)] for rows with
+    VI_STATUS in ('ok', 'discard', 'override'); rows with a blank or other
+    VI_STATUS (not yet reviewed) are skipped. Returns {} if path is None.
+    """
+    out = {}
+    if not path:
+        return out
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            status = row.get('VI_STATUS', '').strip().lower()
+            if status not in ('ok', 'discard', 'override'):
+                continue
+            try:
+                sid = int(row['SGAID'])
+            except (KeyError, ValueError):
+                continue
+            out[sid] = {'status': status, 'z': row.get('VI_Z', ''),
+                       'z_ivar': row.get('VI_Z_IVAR', '')}
+    return out
+
+
 def _reorder_cols(tbl):
     """Reorder tbl columns per COL_ORDER; append unlisted columns at the end."""
     unknown = [c for c in COL_ORDER if c not in tbl.colnames]
@@ -770,7 +808,8 @@ def _reorder_cols(tbl):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep, lvd_catalog=None, parent_nocuts=None, lines=None):
+                 desi_max_sep, lvd_catalog=None, parent_nocuts=None,
+                 vi_redshifts=None, lines=None):
     def emit(msg=''):
         print(msg)
         if lines is not None:
@@ -919,6 +958,11 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         is_lvd      = (beta['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
         log.info(f'  LVD catalog: {len(lvd):,d} entries; '
                  f'{int(np.sum(is_lvd)):,d} LVD objects in SGA sample')
+
+    # --- VI worksheet (manual redshift overrides; see SGA2025-qa-redshifts) -
+    vi_lookup = load_vi_redshifts(vi_redshifts)
+    if vi_redshifts:
+        log.info(f'  VI worksheet {vi_redshifts}: {len(vi_lookup):,d} reviewed SGAIDs')
 
     # --- DESI summary (N_DESI per galaxy) ---------------------------------
     sum_path   = os.path.join(redshiftdir,
@@ -1192,6 +1236,27 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             dist_arrs['DIST'][i]      = dist_ned
             dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]  = 'NED'
+
+    # --- Apply VI worksheet overrides (see load_vi_redshifts) --------------
+    if vi_lookup:
+        n_vi = {'ok': 0, 'discard': 0, 'override': 0}
+        sgaid_arr = np.array(beta['SGAID'])
+        for i, sid in enumerate(sgaid_arr):
+            vi = vi_lookup.get(int(sid))
+            if vi is None:
+                continue
+            n_vi[vi['status']] += 1
+            if vi['status'] == 'discard':
+                adopted_arrs['Z'][i]      = 0.
+                adopted_arrs['Z_IVAR'][i] = 0.
+                adopted_arrs['Z_REF'][i]  = ''
+            elif vi['status'] == 'override':
+                adopted_arrs['Z'][i]      = float(vi['z'])
+                adopted_arrs['Z_IVAR'][i] = float(vi['z_ivar'])
+                adopted_arrs['Z_REF'][i]  = 'VI'
+            adopted_arrs['Z_FLAG'][i] = Z_FLAG_VI_REVIEWED
+        log.info(f'  VI applied: {n_vi["ok"]:,d} ok, {n_vi["discard"]:,d} discarded, '
+                 f'{n_vi["override"]:,d} overridden')
 
     # --- Peculiar-velocity-corrected ("cosmological") redshift, via pvhub -
     cosmo_arrs = {
@@ -1471,6 +1536,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_ned_susp  = int(np.sum((flag_arr & Z_FLAG_NED_SUSPECT)    != 0))
     n_ned_unres = int(np.sum((flag_arr & Z_FLAG_NED_UNRESOLVED) != 0))
     n_ned_miss  = int(np.sum((flag_arr & Z_FLAG_NED_MISSING)    != 0))
+    n_vi_rev    = int(np.sum((flag_arr & Z_FLAG_VI_REVIEWED)    != 0))
     n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
     n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
@@ -1502,6 +1568,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
     emit(f'  Z_FLAG NED unresolved (sole) : {n_ned_unres:>8,d}  ({pct(n_ned_unres):5.1f}%)')
     emit(f'  Z_FLAG NED missing (sole)    : {n_ned_miss:>8,d}  ({pct(n_ned_miss):5.1f}%)')
+    emit(f'  Z_FLAG VI-reviewed           : {n_vi_rev:>8,d}  ({pct(n_vi_rev):5.1f}%)')
     emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     emit()
     emit(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
@@ -1673,6 +1740,9 @@ def main():
                         help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
                              'RA_INIT/DEC_INIT/DIAM_INIT/INIT_REF/BA_INIT/PA_INIT '
                              'from the original parent catalog geometry')
+    parser.add_argument('--vi-redshifts',
+                        help='Path to a VI worksheet CSV (see SGA2025-qa-redshifts) applied '
+                             'after the normal Z/Z_IVAR/Z_REF resolution')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
@@ -1692,7 +1762,8 @@ def main():
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
                      args.vdiff_threshold, args.desi_max_sep,
                      lvd_catalog=args.lvd_catalog,
-                     parent_nocuts=args.parent_nocuts, lines=lines)
+                     parent_nocuts=args.parent_nocuts,
+                     vi_redshifts=args.vi_redshifts, lines=lines)
 
     if args.region is None:
         merge_regions(args.outdir, lines=lines)
