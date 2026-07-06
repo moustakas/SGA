@@ -177,8 +177,8 @@ The per-region merged catalogs combine all per-group ellipse
 photometry, `NASA/IPAC Extragalactic Database (NED)
 <https://ned.ipac.caltech.edu>`_ cross-matched results, spectroscopic
 redshifts from the `Dark Energy Spectroscopic Instrument Data Release
-1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1>`_, and
-direct distances from the `Local Volume Database (LVD)
+1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1>`_ and SDSS
+DR17, and direct distances from the `Local Volume Database (LVD)
 <http://local-volume-database.readthedocs.io/en/latest>`_ into a
 single FITS file per imaging region.
 
@@ -374,7 +374,7 @@ into the groups below.
      - Inverse variance of adopted redshift (0 = no measurement)
    * - ``Z_REF``
      - str4
-     - Source of adopted redshift: ``LVD``, ``DESI``, ``NED``, or blank
+     - Source of adopted redshift: ``LVD``, ``DESI``, ``SDSS``, ``NED``, or blank
    * - ``Z_FLAG``
      - int16
      - Redshift quality flag bitmask (see :ref:`bitmasks`)
@@ -440,6 +440,32 @@ and ``ZWARN_DESI`` are −1 when no spectrum was selected; ``Z_DESI`` and
    * - ``NSPEC_DESI``
      - int32
      - Number of DESI spectra (any ZWARN) within the SGA ellipse (0 if none)
+
+**SDSS DR17 spectroscopy**
+
+The closest quality-filtered SDSS DR17 spectrum matched within 3.5 arcsec
+of the galaxy position (see :ref:`redshifts-distances`). Sentinels: ``Z_SDSS``
+and ``Z_IVAR_SDSS`` are 0; string columns are blank.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``SPECOBJID_SDSS``
+     - str22
+     - SDSS spectrum identifier (encodes plate/mjd/fiber/run2d; blank if no match)
+   * - ``Z_SDSS``
+     - float64
+     - SDSS spectroscopic redshift (0 if no match)
+   * - ``Z_IVAR_SDSS``
+     - float64
+     - Inverse variance of ``Z_SDSS`` (0 if no match)
+   * - ``CLASS_SDSS``
+     - str6
+     - SDSS spectral classification (``GALAXY`` or ``QSO``)
 
 **NED redshift and distance**
 
@@ -613,14 +639,11 @@ These columns are populated only for objects in the Local Volume Database
 
 **Initial geometry**
 
-These columns record the geometry adopted from the input parent catalog at the
-start of processing, before any ellipse fitting. They are useful for
-quantifying how much the pipeline has revised the initial size and shape
-estimates, and for identifying objects whose fitted geometry has diverged
-substantially from the input. ``INIT_REF`` encodes the source of the
-initial diameter: one of ``SGA2020``, ``HYPERLEDA``, ``LIT``, ``LVD``,
-``SMUDGes``, ``RC3``, or ``VI`` (visually inspected and added during
-processing).
+These columns record the geometry adopted from the input parent catalog,
+before any ellipse fitting, for comparison against the final fitted values.
+``INIT_REF`` encodes the source of the initial diameter: one of
+``SGA2020``, ``HYPERLEDA``, ``LIT``, ``LVD``, ``SMUDGes``, ``RC3``, or
+``VI`` (visually inspected and added during processing).
 
 .. list-table::
    :header-rows: 1
@@ -671,148 +694,89 @@ detected within its ellipse. See the `Legacy Surveys documentation
 Redshifts and Distances
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The merged catalogs cross-match three independent redshift sources —
-**DESI DR1**, **NED**, and the **Local Volume Database (LVD)** — and one
-additional distance source (NED) for galaxies without LVD distances.
+The merged catalogs cross-match four independent redshift sources —
+**DESI DR1**, **SDSS DR17**, **NED**, and the **Local Volume Database
+(LVD)** — and one additional distance source (NED) for galaxies without
+LVD distances.
 
 **Adopted redshift (Z, Z_IVAR, Z_REF)**
 
-The adopted redshift follows the priority order **LVD > DESI > NED**:
+Priority order **LVD > DESI > SDSS > NED**:
 
-1. ``Z_REF = LVD`` when ``Z_IVAR_LVD > 0`` (LVD systemic velocity with a
-   reported uncertainty).
-2. ``Z_REF = DESI`` when ``Z_IVAR_DESI > 0`` (a valid DESI spectrum was
-   selected; see below).
-3. ``Z_REF = NED`` when ``Z_IVAR_NED > 0`` (a NED redshift exists).
-4. ``Z_REF = ''`` (blank) when no valid redshift is available from any source.
+1. ``Z_REF = LVD`` when ``Z_IVAR_LVD > 0``.
+2. ``Z_REF = DESI`` when ``Z_IVAR_DESI > 0``.
+3. ``Z_REF = SDSS`` when ``Z_IVAR_SDSS > 0``.
+4. ``Z_REF = NED`` when ``Z_IVAR_NED > 0``.
+5. ``Z_REF = ''`` (blank) when no source has a valid redshift.
 
 .. important::
 
-   Always use ``Z_IVAR > 0`` to test for a valid redshift. ``Z = 0`` is
-   ambiguous: it is the sentinel for *no measurement* but is also a valid
-   (if rare) redshift for very nearby galaxies.
+   Use ``Z_IVAR > 0`` to test for a valid redshift. ``Z = 0`` is the
+   sentinel for *no measurement*, but is also a valid (if rare) redshift
+   for very nearby galaxies.
 
 **DESI DR1 spectrum selection**
 
-A single best DESI spectrum is selected per galaxy using the following
-steps, applied to all spectra within 3 arcsec of the SGA position:
+Applied to all spectra within 3 arcsec of the SGA position:
 
-1. Retain only ``ZCAT_PRIMARY = True`` rows (highest-S/N coadd per TARGETID).
-2. Drop physically implausible spectra regardless of ``ZWARN``:
+1. Keep only ``ZCAT_PRIMARY = True``.
+2. Drop ``SPECTYPE = STAR``, and any ``GALAXY``/``QSO`` spectrum with ``Z > 1.0``.
+3. Prefer ``SPECTYPE = GALAXY`` with ``ZWARN = 0``; otherwise any ``ZWARN = 0``.
+4. Take the highest ``DELTACHI2`` among survivors.
 
-   - ``SPECTYPE = STAR`` — always a mis-classification for galaxies.
-   - ``SPECTYPE = GALAXY`` and ``Z > 1.0`` — pipeline redshift error.
-   - ``SPECTYPE = QSO`` and ``Z > 1.0`` — outside the redshift range of this sample.
+``Z_IVAR_DESI = 0`` if no spectrum survives. ``NSPEC_DESI`` counts all DESI
+spectra within the ellipse regardless of selection outcome.
 
-3. Prefer ``SPECTYPE = GALAXY`` and ``ZWARN = 0``.
-4. Fall back to any ``ZWARN = 0`` spectrum regardless of ``SPECTYPE``.
-5. Among survivors, select the spectrum with the highest ``DELTACHI2``.
+**SDSS DR17 spectrum selection**
 
-If no spectrum survives all filters, no DESI redshift is adopted for that
-galaxy (``Z_IVAR_DESI = 0``). The 3-arcsec proximity cut excludes background
-or foreground objects whose fiber happens to fall inside a large SGA ellipse.
-``NSPEC_DESI`` records the total number of DESI spectra (any ``ZWARN``) found
-within the SGA ellipse, regardless of the selection outcome.
+A single fixed-radius (3.5 arcsec) positional match against SDSS DR17
+``specObj``, pre-filtered to ``SPECPRIMARY = 1``, ``CLASS`` in
+(``GALAXY``, ``QSO``), and clean redshift warnings (``ZWARNING_NOQSO = 0``
+for QSOs, ``ZWARNING = 0`` for galaxies). The closest match is kept when
+more than one falls within the radius. This match is independent of NED's
+own SDSS-derived redshifts (see ``NED_FLAG`` below) and takes priority over
+them, since NED does not propagate SDSS's own quality flags.
 
-**NED redshift override**
+**NED redshift resolution**
 
-This logic handles two distinct problems, both resolved against the full set
-of NED redshift measurements for the object (not just its default/fiducial
-value):
+NED's aggregated ("fiducial") ``Z_NED`` is replaced by a value drawn from
+NED's full redshift-measurement list for the object when it:
 
-- NED occasionally assigns a bogus, very high "fiducial" redshift to an
-  object -- most often SDSS fiber contamination from a background source
-  overlapping a nearby dwarf galaxy -- while its own full list of redshift
-  measurements for that object contains the correct, much lower value.
-  Triggered when the adopted ``Z_NED`` exceeds a threshold (0.4 by default;
-  true SGA-2025 redshifts are almost never this high).
-- NED's own aggregated default has no redshift at all for the object, even
-  though its full measurement list does (e.g. UGC 06451, whose only
-  overview-level redshift is a stale/bogus WISE photometric estimate but
-  which has real spectroscopic measurements in NED's full list). Triggered
-  whenever the default ``Z_NED`` is missing, regardless of threshold.
+- exceeds a threshold (0.4 by default),
+- is missing entirely, or
+- comes from a censored source: the Bilicki et al. (2014) 2MASS
+  photometric-redshift catalog, or an SDSS-compilation reference (superseded
+  by the direct SDSS DR17 match above).
 
-In both cases the full set of NED redshift measurements for that object is
-queried and used to look for a good answer:
-
-1. Candidate measurements at or below the threshold are grouped into
-   clusters of mutually agreeing values.
-2. If one cluster is unambiguously the largest (including the trivial case
-   of a single alternative measurement), the highest-quality measurement
-   within it is adopted -- spectroscopic measurements are preferred over
-   photometric ones, then a clean quality flag over an uncertain one, then
-   the most recent literature reference.
-3. Otherwise -- multiple candidates that disagree with each other, or none
-   at all below threshold -- no confident replacement exists; the lowest
-   candidate (if any) is adopted as a best guess, or the original value is
-   kept unchanged if there are no candidates at all (for a missing default
-   with no candidates, ``Z_NED`` is simply left unset -- the ordinary case of
-   a genuinely unmeasured object, not worth flagging). Otherwise the result
-   is flagged for follow-up (see ``NED_FLAG`` in :ref:`bitmasks`).
-
-This pass runs once per SGA-2025 release rather than automatically as part
-of routine processing, since it requires a separate, restricted NED query
-for the affected galaxies.
-
-**Z_FLAG (redshift quality)**
-
-Bit ``0x01`` of ``Z_FLAG`` is set when any two of the three measured
-redshifts (LVD, DESI, NED) differ by more than 1000 km/s in the rest frame.
-This flags sources where independent measurements are inconsistent and
-warrants closer inspection.
-
-Bits ``0x02``, ``0x04``, and ``0x08`` address a blind spot in the discrepancy
-check: when NED is the *only* redshift measurement available (no LVD or DESI
-value at all), there is nothing to cross-check it against, so a still-
-suspect, unresolved, or missing-default NED redshift (see ``NED_FLAG`` above)
-would otherwise pass through silently. In that single-measurement case only,
-the corresponding ``NED_FLAG`` bits are mirrored into ``Z_FLAG``:
-
-- ``0x02`` -- the sole measurement's ``NED_FLAG`` has ``Z_SUSPECT`` set (the
-  redshift-override logic considered alternatives; it may or may not have
-  found a confident replacement).
-- ``0x04`` -- the sole measurement's ``NED_FLAG`` has ``Z_UNRESOLVED`` set:
-  no confident replacement was found, so the adopted ``Z`` may still be
-  wrong (e.g. VCC 1601, whose only two NED redshift measurements are both
-  implausibly high).
-- ``0x08`` -- the sole measurement's ``NED_FLAG`` has ``Z_MISSING`` set:
-  NED had no default redshift at all, and the adopted ``Z`` was pulled from
-  NED's full list of redshift measurements instead (e.g. UGC 06451).
-
-None of these bits trigger any automatic correction; all three are intended
-purely as a signal for targeted visual inspection.
+Candidate measurements are grouped into clusters of mutually agreeing
+values; if one cluster dominates, its highest-quality measurement is
+adopted. Otherwise, or if no candidates exist, the result is flagged rather
+than silently trusted (see ``NED_FLAG`` / ``Z_FLAG`` in :ref:`bitmasks`).
 
 **Adopted distance (DIST, DIST_IVAR, DIST_REF)**
 
-The adopted distance follows the priority order **LVD > NED**:
+Priority order **LVD > NED**:
 
-1. ``DIST_REF = LVD`` when ``DIST_LVD > 0`` (an LVD distance exists).
-2. ``DIST_REF = NED`` when ``DIST_NED > 0`` (a NED distance exists).
+1. ``DIST_REF = LVD`` when ``DIST_LVD > 0``.
+2. ``DIST_REF = NED`` when ``DIST_NED > 0``.
 
-``DIST_IVAR = 0`` may mean either no distance is available or that no formal
-uncertainty was reported (unlike redshifts, no nominal default uncertainty is
-assumed for distances). LVD distances are converted from kpc to Mpc.
+LVD distances are converted from kpc to Mpc. ``DIST_IVAR = 0`` may mean no
+distance is available, or that no formal uncertainty was reported.
 
 **Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
 
-For every galaxy with a valid adopted redshift (``Z_IVAR > 0``), the
-heliocentric ``Z`` is converted to the CMB frame using the standard dipole
+For every galaxy with ``Z_IVAR > 0``, the heliocentric ``Z`` is converted to
+the CMB frame using the standard dipole
 (`Planck 2018 <https://www.aanda.org/articles/aa/full_html/2020/09/aa33910-18/aa33910-18.html>`_:
 369.82 km/s toward RA = 167.942°, Dec = −6.944°, J2000).
 
-For objects with CMB-frame velocity below 20,000 km/s -- approximately the
-domain of the flow-field reconstructions used below -- the peculiar velocity
-along the line of sight is predicted using
-`pvhub <https://github.com/KSaid-1/pvhub>`_ (Said et al.), which provides
-four independent linear reconstructions of the local velocity field
-(2M++-SDSS, 2M++-SDSS+6dF, 2MRS, and 2M++). ``Z_COSMO`` is the CMB-frame
-redshift with the mean peculiar velocity across these four models removed;
-``Z_COSMO_IVAR`` combines the model-to-model scatter with the adopted
-redshift's own measurement uncertainty in quadrature.
-
-Beyond 20,000 km/s -- outside the reconstructions' domain -- ``Z_COSMO`` is
-simply the CMB-frame redshift with no peculiar-velocity correction applied,
-and ``Z_COSMO_IVAR`` carries over the adopted ``Z_IVAR`` unchanged.
+Below 20,000 km/s, `pvhub <https://github.com/KSaid-1/pvhub>`_ (Said et al.)
+predicts the line-of-sight peculiar velocity from four independent linear
+reconstructions (2M++-SDSS, 2M++-SDSS+6dF, 2MRS, 2M++); ``Z_COSMO`` is the
+CMB-frame redshift with their mean peculiar velocity removed, and
+``Z_COSMO_IVAR`` combines the model-to-model scatter with the measurement
+uncertainty in quadrature. Beyond 20,000 km/s, ``Z_COSMO`` is simply the
+CMB-frame redshift and ``Z_COSMO_IVAR`` carries over ``Z_IVAR`` unchanged.
 
 **Sentinel conventions**
 
@@ -1008,6 +972,14 @@ Multiple bits may be set simultaneously.
      - 32
      - NED's own default redshift was missing entirely; ``Z_NED`` was
        adopted from NED's full list of redshift measurements instead
+   * - ``Z_CENSORED_PHOTOZ``
+     - 64
+     - Adopted default was a photometric-redshift measurement (Bilicki
+       et al. 2014 2MASS Photo-z catalog); discarded, alternates considered
+   * - ``Z_CENSORED_SDSS``
+     - 128
+     - Adopted default came from an SDSS-compilation reference; discarded
+       in favor of the direct SDSS DR17 match (see :ref:`redshifts-distances`)
 
 .. note::
 
@@ -1027,12 +999,12 @@ Multiple bits may be set simultaneously.
      - Description
    * - ``DISCREPANCY``
      - 1
-     - Any two measured redshifts (LVD, DESI, NED) differ by more than
-       1000 km/s in the rest frame; the adopted redshift should be
+     - Any two measured redshifts (LVD, DESI, SDSS, NED) differ by more
+       than 1000 km/s in the rest frame; the adopted redshift should be
        treated with caution
    * - ``NED_SUSPECT``
      - 2
-     - NED is the sole redshift measurement (no LVD or DESI value at all)
+     - NED is the sole redshift measurement (no LVD, DESI, or SDSS value)
        and its ``NED_FLAG`` has ``Z_SUSPECT`` set
    * - ``NED_UNRESOLVED``
      - 4
@@ -1041,7 +1013,7 @@ Multiple bits may be set simultaneously.
        redshift may still be wrong
    * - ``NED_MISSING``
      - 8
-     - NED is the sole redshift measurement (no LVD or DESI value at all)
+     - NED is the sole redshift measurement (no LVD, DESI, or SDSS value)
        and its ``NED_FLAG`` has ``Z_MISSING`` set: NED had no default
        redshift, so the adopted value came from NED's full redshift list
 
