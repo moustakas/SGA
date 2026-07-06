@@ -61,10 +61,13 @@ Z_FLAG bits
                                 own overview had no default redshift at all;
                                 the adopted Z came from SGA2025-ned-merge's
                                 RedshiftsOfObject override instead)
-  0x10  Z_FLAG_AUTO_NED_OVERRIDE  adopted DESI/SDSS Z > --ned-override-zmin
+  0x10  Z_FLAG_CONSENSUS_OVERRIDE  DESI disagreed with SDSS and NED, which
+                                agreed with each other; adopted Z replaced
+                                by SDSS's; see below
+  0x20  Z_FLAG_AUTO_NED_OVERRIDE  adopted DESI/SDSS Z > --ned-override-zmin
                                 was automatically replaced by NED's Z; see
                                 below
-  0x20  Z_FLAG_VI_REVIEWED     Z/Z_IVAR/Z_REF were set (or confirmed) by a
+  0x40  Z_FLAG_VI_REVIEWED     Z/Z_IVAR/Z_REF were set (or confirmed) by a
                                 manual VI pass; see --vi-redshifts below
 
 NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
@@ -80,6 +83,16 @@ since DISCREPANCY already covers cases where a second measurement exists to
 cross-check against; all three are intended as a signal for targeted visual
 inspection, not an automatic correction.
 
+Consensus override
+--------------------
+DESI always wins normal priority when it has a valid redshift, so it is the
+only source that can end up adopted despite being the outlier. When DESI,
+SDSS, and NED are all measured for an object, DESI disagrees with SDSS
+(> --vdiff-threshold), and DESI disagrees with NED, but SDSS and NED agree
+with each other, the adopted Z/Z_IVAR/Z_REF are replaced by SDSS's instead
+of blindly trusting priority order. Runs before the automatic NED override
+below, and is skipped for objects it has already resolved.
+
 Automatic NED override (--ned-override-zmin)
 ----------------------------------------------
 This sample is overwhelmingly z < 0.3, and NED redshifts have already been
@@ -88,8 +101,10 @@ DESI/SDSS redshift above --ned-override-zmin (default 0.3) with an
 independent NED measurement on file is treated as a fiber landing on a
 background source: the adopted Z/Z_IVAR/Z_REF are replaced by NED's,
 unconditionally (not gated on Z_FLAG_DISCREPANCY -- some genuine mismatches
-fall just inside --vdiff-threshold). Runs before --vi-redshifts, so a VI
-pass can still override the auto-corrected value if needed.
+fall just inside --vdiff-threshold). Runs after the consensus override
+above (and is skipped for objects it already resolved), but before
+--vi-redshifts, so a VI pass can still override either auto-correction if
+needed.
 
 Manual VI overrides (optional --vi-redshifts input)
 -----------------------------------------------------
@@ -195,12 +210,13 @@ from SGA.logger import log, LOGFMT
 
 NED_Z_NOMINAL_ERR     = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
 FLOAT_SENTINEL        = -1.              # sentinel for floats without an IVAR companion
-Z_FLAG_DISCREPANCY      = 0x01           # |Delta cz (DESI, NED)| > vdiff_threshold
-Z_FLAG_NED_SUSPECT      = 0x02           # sole measurement is NED; NED_FLAG Z_SUSPECT set
-Z_FLAG_NED_UNRESOLVED   = 0x04           # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
-Z_FLAG_NED_MISSING      = 0x08           # sole measurement is NED; NED_FLAG Z_MISSING set
-Z_FLAG_AUTO_NED_OVERRIDE = 0x10          # adopted DESI/SDSS Z > --ned-override-zmin replaced by NED
-Z_FLAG_VI_REVIEWED      = 0x20           # Z/Z_IVAR/Z_REF set or confirmed by --vi-redshifts; last
+Z_FLAG_DISCREPANCY       = 0x01          # |Delta cz (DESI, NED)| > vdiff_threshold
+Z_FLAG_NED_SUSPECT       = 0x02          # sole measurement is NED; NED_FLAG Z_SUSPECT set
+Z_FLAG_NED_UNRESOLVED    = 0x04          # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
+Z_FLAG_NED_MISSING       = 0x08          # sole measurement is NED; NED_FLAG Z_MISSING set
+Z_FLAG_CONSENSUS_OVERRIDE = 0x10         # DESI disagreed with an agreeing SDSS/NED pair; replaced by SDSS
+Z_FLAG_AUTO_NED_OVERRIDE = 0x20          # adopted DESI/SDSS Z > --ned-override-zmin replaced by NED
+Z_FLAG_VI_REVIEWED       = 0x40          # Z/Z_IVAR/Z_REF set or confirmed by --vi-redshifts; last
                                           # bit by convention -- the final, human-authoritative step
 
 # Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED / FLAG_Z_MISSING in SGA2025-ned-merge.
@@ -708,6 +724,12 @@ def _angular_sep_arcsec(ra1, dec1, ra2, dec2):
     """Small-angle angular separation in arcsec; ra2/dec2 may be arrays."""
     cos_dec = np.cos(np.radians(dec1))
     return np.sqrt(((ra2 - ra1) * cos_dec)**2 + (dec2 - dec1)**2) * 3600.
+
+
+def _vdiff_kms(z1, z2):
+    """Rest-frame velocity difference (km/s) between two redshifts; scalar
+    or array. Same formula as the Z_FLAG_DISCREPANCY check below."""
+    return C_LIGHT * np.abs(z1 - z2) / (1. + np.minimum(z1, z2))
 
 
 def _helio_to_cmb_z(ra, dec, z_helio):
@@ -1259,10 +1281,30 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]  = 'NED'
 
+    # --- Consensus override: DESI outlier vs. an agreeing SDSS/NED pair ----
+    n_consensus = 0
+    if z_ned_arr is not None and zivar_ned_arr is not None:
+        z_desi, z_sdss = desi_arrs['Z_DESI'], sdss_arrs['Z_SDSS']
+        three_valid = ((desi_arrs['Z_IVAR_DESI'] > 0.) &
+                       (sdss_arrs['Z_IVAR_SDSS'] > 0.) & (zivar_ned_arr > 0.))
+        agree_ds = _vdiff_kms(z_desi, z_sdss)    <= vdiff_threshold
+        agree_dn = _vdiff_kms(z_desi, z_ned_arr) <= vdiff_threshold
+        agree_sn = _vdiff_kms(z_sdss, z_ned_arr) <= vdiff_threshold
+        consensus_mask = three_valid & ~agree_ds & ~agree_dn & agree_sn
+        n_consensus = int(np.sum(consensus_mask))
+        if n_consensus:
+            adopted_arrs['Z'][consensus_mask]      = z_sdss[consensus_mask]
+            adopted_arrs['Z_IVAR'][consensus_mask] = sdss_arrs['Z_IVAR_SDSS'][consensus_mask]
+            adopted_arrs['Z_REF'][consensus_mask]  = 'SDSS'
+            adopted_arrs['Z_FLAG'][consensus_mask] = Z_FLAG_CONSENSUS_OVERRIDE
+    log.info(f'  Consensus override (DESI outlier, SDSS+NED agree): {n_consensus:,d} objects')
+
     # --- Automatic NED override for high-z DESI/SDSS (see docstring) -------
     n_auto = 0
     if z_ned_arr is not None and zivar_ned_arr is not None:
-        auto_mask = ((adopted_arrs['Z'] > ned_override_zmin) &
+        already_resolved = (adopted_arrs['Z_FLAG'] & Z_FLAG_CONSENSUS_OVERRIDE) != 0
+        auto_mask = (~already_resolved &
+                    (adopted_arrs['Z'] > ned_override_zmin) &
                     np.isin(adopted_arrs['Z_REF'], ['DESI', 'SDSS']) &
                     (zivar_ned_arr > 0.))
         n_auto = int(np.sum(auto_mask))
@@ -1572,6 +1614,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_ned_susp  = int(np.sum((flag_arr & Z_FLAG_NED_SUSPECT)    != 0))
     n_ned_unres = int(np.sum((flag_arr & Z_FLAG_NED_UNRESOLVED) != 0))
     n_ned_miss  = int(np.sum((flag_arr & Z_FLAG_NED_MISSING)    != 0))
+    n_consensus_ov = int(np.sum((flag_arr & Z_FLAG_CONSENSUS_OVERRIDE) != 0))
     n_auto_ned  = int(np.sum((flag_arr & Z_FLAG_AUTO_NED_OVERRIDE) != 0))
     n_vi_rev    = int(np.sum((flag_arr & Z_FLAG_VI_REVIEWED)    != 0))
     n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
@@ -1605,6 +1648,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
     emit(f'  Z_FLAG NED unresolved (sole) : {n_ned_unres:>8,d}  ({pct(n_ned_unres):5.1f}%)')
     emit(f'  Z_FLAG NED missing (sole)    : {n_ned_miss:>8,d}  ({pct(n_ned_miss):5.1f}%)')
+    emit(f'  Z_FLAG consensus override    : {n_consensus_ov:>8,d}  ({pct(n_consensus_ov):5.1f}%)')
     emit(f'  Z_FLAG auto NED override     : {n_auto_ned:>8,d}  ({pct(n_auto_ned):5.1f}%)')
     emit(f'  Z_FLAG VI-reviewed           : {n_vi_rev:>8,d}  ({pct(n_vi_rev):5.1f}%)')
     emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')

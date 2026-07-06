@@ -15,14 +15,24 @@ read_sga_sample, i.e. all group members, not just GROUP_PRIMARY) with
 Z_IVAR > 0 and Z above --z-threshold (default: the --percentile-th
 percentile of the Z distribution, 99th by default).
 
+Objects SGA2025-build-catalog already auto-resolved (Z_FLAG has
+CONSENSUS_OVERRIDE, AUTO_NED_OVERRIDE, or VI_REVIEWED set) are excluded
+from every category below -- they don't need VI, and for OVERRIDE
+specifically, the raw Z_DESI/Z_SDSS/Z_NED columns keep their pre-override
+values, so re-checking them would flag an already-fixed object again.
+
 Action categories (mutually exclusive)
 ---------------------------------------
-OVERRIDE   Z_FLAG has DISCREPANCY set: at least one other source (LVD,
-           DESI, SDSS, or NED -- see the Z_{SRC} columns in the worksheet)
-           has an independently measured redshift that disagrees with the
-           adopted one by more than build-catalog's --vdiff-threshold. The
-           alternative value is already sitting in the same row; decide
-           which (if either) is right.
+OVERRIDE   The adopted Z disagrees with every other available measurement
+           (LVD, DESI, SDSS, NED -- see the Z_{SRC} columns in the
+           worksheet) by more than --override-vdiff-threshold (default
+           5000 km/s, deliberately looser than build-catalog's own
+           --vdiff-threshold used for Z_FLAG DISCREPANCY: that bit is a
+           general-purpose science flag and fires on differences as small
+           as 1000 km/s, which a coarse literature NED redshift can exceed
+           even when DESI and SDSS agree with each other -- not a genuine
+           problem). The alternative value is already sitting in the same
+           row; decide which (if either) is right.
 
 DISCARD_UNRESOLVED   Z_REF = NED and NED_FLAG has Z_UNRESOLVED set:
            SGA2025-ned-merge already tried and failed to find a confident
@@ -61,19 +71,32 @@ import numpy as np
 from astropy.table import Column
 
 from SGA.SGA import read_sga_sample
+from SGA.util import C_LIGHT
 from SGA.logger import log
 
 # Must match bin/SGA2025-ned-merge.
 NED_FLAG_Z_UNRESOLVED = 0x10
 
 # Must match bin/SGA2025-build-catalog.
-Z_FLAG_DISCREPANCY = 0x01
+Z_FLAG_CONSENSUS_OVERRIDE = 0x10
+Z_FLAG_AUTO_NED_OVERRIDE  = 0x20
+Z_FLAG_VI_REVIEWED        = 0x40
+Z_FLAG_ALREADY_RESOLVED = (Z_FLAG_CONSENSUS_OVERRIDE | Z_FLAG_AUTO_NED_OVERRIDE |
+                          Z_FLAG_VI_REVIEWED)
+
+SOURCES = ['LVD', 'DESI', 'SDSS', 'NED']   # must match the Z_{SRC}/Z_IVAR_{SRC} columns
 
 CANDIDATE_COLS = [
     'SGAID', 'GALAXY', 'REGION', 'Z', 'Z_REF', 'Z_FLAG', 'NED_FLAG',
     'Z_LVD', 'Z_DESI', 'Z_SDSS', 'Z_NED', 'D26',
 ]
 VI_COLS = ['VI_STATUS', 'VI_Z', 'VI_Z_IVAR', 'VI_NOTES']
+
+
+def _vdiff_kms(z1, z2):
+    """Rest-frame velocity difference (km/s) between two redshifts; array or
+    scalar. Same formula as SGA2025-build-catalog's Z_FLAG_DISCREPANCY check."""
+    return C_LIGHT * np.abs(z1 - z2) / (1. + np.minimum(z1, z2))
 
 
 def main():
@@ -94,6 +117,11 @@ def main():
     parser.add_argument('--sole-threshold', type=float, default=0.3,
                         help='DISCARD_UNVERIFIED cutoff: sole-source DESI/SDSS redshifts at '
                              'or above this value are flagged for VI (default: 0.3)')
+    parser.add_argument('--override-vdiff-threshold', type=float, default=5000.,
+                        help='OVERRIDE cutoff: the adopted Z must disagree with every other '
+                             'available measurement by more than this (km/s) to be flagged. '
+                             'Deliberately looser than build-catalog\'s own --vdiff-threshold '
+                             '(default: 5000)')
     parser.add_argument('--write-candidates', default=None,
                         help='Path to write the VI worksheet CSV')
     args = parser.parse_args()
@@ -108,10 +136,8 @@ def main():
     zref     = np.array(t['Z_REF'])
     zflag    = np.array(t['Z_FLAG'])
     nedflag  = np.array(t['NED_FLAG'])
-    ivar_lvd  = np.array(t['Z_IVAR_LVD'])
-    ivar_desi = np.array(t['Z_IVAR_DESI'])
-    ivar_sdss = np.array(t['Z_IVAR_SDSS'])
-    ivar_ned  = np.array(t['Z_IVAR_NED'])
+    z_src    = {src: np.array(t[f'Z_{src}'])      for src in SOURCES}
+    ivar_src = {src: np.array(t[f'Z_IVAR_{src}']) for src in SOURCES}
 
     has_z = ivar > 0
     if args.z_threshold is not None:
@@ -120,13 +146,27 @@ def main():
         z_threshold = float(np.percentile(z[has_z], args.percentile))
     hi = has_z & (z > z_threshold)
 
-    n_valid = ((ivar_lvd > 0).astype(int) + (ivar_desi > 0).astype(int) +
-               (ivar_sdss > 0).astype(int) + (ivar_ned > 0).astype(int))
+    already_resolved = (zflag & Z_FLAG_ALREADY_RESOLVED) != 0
 
-    override           = hi & ((zflag & Z_FLAG_DISCREPANCY) != 0)
-    discard_unresolved = hi & (zref == 'NED') & ((nedflag & NED_FLAG_Z_UNRESOLVED) != 0)
-    discard_unverified = (hi & (n_valid == 1) & np.isin(zref, ['DESI', 'SDSS']) &
-                          (z >= args.sole_threshold))
+    n_valid = sum((ivar_src[src] > 0).astype(int) for src in SOURCES)
+
+    # OVERRIDE: the adopted Z is corroborated by another source (agrees within
+    # --override-vdiff-threshold) only if it wasn't already resolved by
+    # build-catalog. A source "corroborates" if it's valid, isn't the one
+    # already adopted, and is close to the adopted Z.
+    any_other_valid = np.zeros(len(t), dtype=bool)
+    corroborated    = np.zeros(len(t), dtype=bool)
+    for src in SOURCES:
+        other_valid = (ivar_src[src] > 0) & (zref != src)
+        any_other_valid |= other_valid
+        corroborated    |= (other_valid &
+                            (_vdiff_kms(z, z_src[src]) <= args.override_vdiff_threshold))
+    override = hi & ~already_resolved & any_other_valid & ~corroborated
+
+    discard_unresolved = (hi & ~already_resolved & (zref == 'NED') &
+                         ((nedflag & NED_FLAG_Z_UNRESOLVED) != 0))
+    discard_unverified = (hi & ~already_resolved & (n_valid == 1) &
+                          np.isin(zref, ['DESI', 'SDSS']) & (z >= args.sole_threshold))
 
     action = np.full(len(t), '', dtype='U20')
     action[override]           = 'OVERRIDE'
@@ -145,8 +185,12 @@ def main():
         print(f'  {src or "(none)":8s}: {int(m.sum()):6,d}  '
               f'(min={z[m].min():.4f} median={np.median(z[m]):.4f} max={z[m].max():.4f})')
 
+    n_auto = int(np.sum(hi & already_resolved))
+    print(f'\nAlready auto-resolved by build-catalog (excluded below): {n_auto:6,d}')
+
     print('\nAction categories:')
-    print(f'  OVERRIDE            : {int(override.sum()):6,d}  (independent measurements disagree)')
+    print(f'  OVERRIDE            : {int(override.sum()):6,d}  '
+          f'(disagrees with every other source by > {args.override_vdiff_threshold:g} km/s)')
     print(f'  DISCARD_UNRESOLVED  : {int(discard_unresolved.sum()):6,d}  '
           f'(sole NED measurement, ned-merge could not resolve it)')
     print(f'  DISCARD_UNVERIFIED  : {int(discard_unverified.sum()):6,d}  '
