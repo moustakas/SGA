@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Match the SGA-2025 sample against DESI DR1 spectra.
+"""Match the SGA-2025 sample against DESI DR1 or SDSS DR17 spectra.
 
-For each non-RESOLVED SGA galaxy, find all DESI DR1 spectra (zall-pix-iron)
-within its D26/2 elliptical aperture.  The algorithm uses a KD-tree for a
-circular pre-selection binned by galaxy diameter (log-spaced bins), followed
-by a precise per-galaxy elliptical aperture filter.
+DESI (default): for each non-RESOLVED SGA galaxy, find all DESI DR1 spectra
+(zall-pix-iron) within its D26/2 elliptical aperture. The algorithm uses a
+KD-tree for a circular pre-selection binned by galaxy diameter (log-spaced
+bins), followed by a precise per-galaxy elliptical aperture filter.
 
 Outputs:
   SGA2025-DESI-DR1-matches-{region}.fits   one row per (SGA galaxy, DESI spectrum)
@@ -13,6 +13,23 @@ Outputs:
 Example:
   SGA2025-desi-dr1-match --region dr11-south --mp 32 --outdir /path/to/output
   SGA2025-desi-dr1-match --region dr11-north --mp 32 --outdir /path/to/output
+
+--sdss: much simpler than the DESI match above -- a single fixed-radius
+(--sdss-radius, default 3.5 arcsec) positional search around each SGA
+galaxy's RA/DEC against $SGA_DIR/sample/redshifts/specObj-dr17.fits, no
+elliptical aperture or diameter binning. The specObj catalog is filtered
+down to "best" extragalactic spectra before matching:
+  1. SPECPRIMARY == 1        -- one row per unique spectroscopic object
+  2. CLASS in (GALAXY, QSO)  -- excludes Galactic stars
+  3. ZWARNING_NOQSO == 0 for QSOs (ZWARNING is unreliable for QSOs' broad
+     lines), ZWARNING == 0 for galaxies
+
+Outputs:
+  SGA2025-SDSS-DR17-matches-{region}.fits   one row per (SGA galaxy, SDSS spectrum)
+  SGA2025-SDSS-DR17-summary-{region}.fits   one row per SGA galaxy (row-matched to fullsample)
+
+Example:
+  SGA2025-desi-dr1-match --sdss --region dr11-south --outdir /path/to/output
 """
 import os, sys, time
 import numpy as np
@@ -20,12 +37,20 @@ import fitsio
 from astropy.table import Table
 
 from SGA.logger import log
+from SGA.SGA import sga_dir
 from SGA.sky import in_ellipse_mask_sky
 from SGA.ellipse import ELLIPSEMODE
 
 ZCATFILE = os.path.join(
     os.getenv('DESI_ROOT', ''),
     'iron', 'zcatalog', 'v1', 'zall-pix-iron.fits')
+
+SPECOBJFILE = os.path.join(sga_dir(), 'sample', 'redshifts', 'specObj-dr17.fits')
+
+SDSS_MATCH_COLS = [
+    'PLATE', 'MJD', 'FIBERID', 'CLASS', 'SUBCLASS',
+    'Z', 'Z_ERR', 'ZWARNING', 'ZWARNING_NOQSO',
+]
 
 
 def _parse_args():
@@ -39,7 +64,12 @@ def _parse_args():
     p.add_argument('--outdir', default='.',
                    help='Output directory (default: current directory)')
     p.add_argument('--mp', type=int, default=1,
-                   help='Number of worker processes (default: 1)')
+                   help='Number of worker processes (DESI match only; default: 1)')
+    p.add_argument('--sdss', action='store_true',
+                   help='Match against SDSS DR17 specObj instead of DESI DR1 '
+                        '(simple fixed-radius positional search; see --sdss-radius)')
+    p.add_argument('--sdss-radius', type=float, default=3.5,
+                   help='Positional matching radius in arcsec for --sdss (default: 3.5)')
     p.add_argument('--overwrite', action='store_true',
                    help='Overwrite existing output files')
     p.add_argument('--verbose', action='store_true',
@@ -76,14 +106,7 @@ def _match_one(args):
     return sgaid, cand_idx[mask]
 
 
-def main():
-    args = _parse_args()
-
-    import logging
-    if args.verbose:
-        for h in log.handlers:
-            h.setLevel(logging.DEBUG)
-
+def _match_desi(args):
     os.makedirs(args.outdir, exist_ok=True)
     outmatch   = os.path.join(args.outdir,
                               f'SGA2025-DESI-DR1-matches-{args.region}.fits')
@@ -330,6 +353,131 @@ def main():
 
     log.info('Done.')
     return 0
+
+
+def _match_sdss(args):
+    os.makedirs(args.outdir, exist_ok=True)
+    outmatch   = os.path.join(args.outdir,
+                              f'SGA2025-SDSS-DR17-matches-{args.region}.fits')
+    outsummary = os.path.join(args.outdir,
+                              f'SGA2025-SDSS-DR17-summary-{args.region}.fits')
+
+    if not args.overwrite:
+        for f in [outmatch, outsummary]:
+            if os.path.isfile(f):
+                log.error(f'Output exists (use --overwrite): {f}')
+                return 1
+
+    # -------------------------------------------------------------------------
+    # Load SGA sample
+    # -------------------------------------------------------------------------
+    from SGA.SGA import read_sga_sample
+
+    t0 = time.time()
+    log.info(f'Reading SGA sample for region {args.region}...')
+    _, fullsample = read_sga_sample(region=args.region, verbose=args.verbose)
+    log.info(f'  {len(fullsample):,d} total SGA galaxies ({time.time()-t0:.1f}s)')
+
+    sgaid_arr = np.asarray(fullsample['SGAID'])
+    ra_arr    = np.asarray(fullsample['RA'],  dtype=np.float64)
+    dec_arr   = np.asarray(fullsample['DEC'], dtype=np.float64)
+
+    # -------------------------------------------------------------------------
+    # Load and quality-filter the SDSS specObj catalog
+    # -------------------------------------------------------------------------
+    log.info(f'Reading {SPECOBJFILE}...')
+    t0 = time.time()
+    cols = ['PLUG_RA', 'PLUG_DEC', 'SPECPRIMARY', 'CLASS'] + SDSS_MATCH_COLS
+    cols = list(dict.fromkeys(cols))   # dedupe, preserve order
+    spec = fitsio.read(SPECOBJFILE, columns=cols)
+    log.info(f'  {len(spec):,d} specObj rows read ({time.time()-t0:.1f}s)')
+
+    # "Best" extragalactic spectra: primary observation, GALAXY or QSO, and a
+    # clean redshift warning (ZWARNING_NOQSO for QSOs -- ZWARNING itself is
+    # unreliable for QSO broad-line automated fits).
+    classes  = np.char.strip(spec['CLASS'])
+    primary  = spec['SPECPRIMARY'] == 1
+    qso      = classes == 'QSO'
+    galaxy   = classes == 'GALAXY'
+    good_qso    = qso    & (spec['ZWARNING_NOQSO'] == 0)
+    good_galaxy = galaxy & (spec['ZWARNING'] == 0)
+    best = primary & (qso | galaxy) & (good_qso | good_galaxy)
+    log.info(f'  {int(best.sum()):,d} best extragalactic spectra '
+             f'(SPECPRIMARY, GALAXY/QSO, clean ZWARNING)')
+
+    spec_ra  = spec['PLUG_RA'][best].astype(np.float64)
+    spec_dec = spec['PLUG_DEC'][best].astype(np.float64)
+    spec_best = Table(spec[best])
+
+    # -------------------------------------------------------------------------
+    # Fixed-radius positional match via KD-tree
+    # -------------------------------------------------------------------------
+    from scipy.spatial import cKDTree
+
+    log.info(f'Matching within {args.sdss_radius:.1f} arcsec...')
+    t0 = time.time()
+    tree     = cKDTree(_xyz(spec_ra, spec_dec))
+    chord_r  = _chord(args.sdss_radius / 3600.0)
+    cand_lists = tree.query_ball_point(_xyz(ra_arr, dec_arr), chord_r)
+    log.info(f'  Match done ({time.time()-t0:.1f}s)')
+
+    # -------------------------------------------------------------------------
+    # Build match table: one row per (SGA galaxy, SDSS spectrum)
+    # -------------------------------------------------------------------------
+    log.info('Building match table...')
+    match_sgaids = []
+    match_specidx = []
+    for sgaid, cand_idx in zip(sgaid_arr, cand_lists):
+        for i in cand_idx:
+            match_sgaids.append(sgaid)
+            match_specidx.append(i)
+
+    match_table = spec_best[np.array(match_specidx, dtype=np.int64)]
+    match_table.add_column(np.array(match_sgaids, dtype=np.int64), name='SGAID', index=0)
+    log.info(f'  Match table: {len(match_table):,d} rows')
+
+    # -------------------------------------------------------------------------
+    # Build summary table: row-matched to fullsample
+    # -------------------------------------------------------------------------
+    log.info('Building summary table...')
+    n_full = len(fullsample)
+    n_sdss = np.array([len(c) for c in cand_lists], dtype=np.int32)
+
+    summary = Table()
+    summary['SGAID']   = sgaid_arr
+    summary['OBJNAME']  = np.array(fullsample['OBJNAME'])
+    summary['RA']       = ra_arr
+    summary['DEC']      = dec_arr
+    summary['N_SDSS']   = n_sdss
+
+    n_with_spectra = int((summary['N_SDSS'] > 0).sum())
+    log.info(f'  Summary table: {n_full:,d} rows, '
+             f'{n_with_spectra:,d} galaxies with >=1 best SDSS spectrum')
+
+    # -------------------------------------------------------------------------
+    # Write outputs
+    # -------------------------------------------------------------------------
+    log.info(f'Writing {outmatch}')
+    match_table.write(outmatch, overwrite=args.overwrite)
+
+    log.info(f'Writing {outsummary}')
+    summary.write(outsummary, overwrite=args.overwrite)
+
+    log.info('Done.')
+    return 0
+
+
+def main():
+    args = _parse_args()
+
+    import logging
+    if args.verbose:
+        for h in log.handlers:
+            h.setLevel(logging.DEBUG)
+
+    if args.sdss:
+        return _match_sdss(args)
+    return _match_desi(args)
 
 
 if __name__ == '__main__':
