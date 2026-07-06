@@ -29,13 +29,23 @@ Three query types (--querytype):
     object (not just the fiducial one), so the output has one row per
     measurement, not per galaxy. Output: ned-{querytype}-{region}.csv
 
+    NED's name resolution isn't always symmetric: a winning CROSSIDS[0]
+    name can fail against RedshiftsOfObject/DistancesOfObject even though
+    the originally-submitted byname OBJNAME resolves fine for the same
+    object (e.g. 'SDSS 587739302613680312' fails, 'SDSS
+    J133845.98+323042.0' succeeds). When the CROSSIDS[0] query comes back
+    empty, it is retried once more using OBJNAME, if that object's byname
+    query itself succeeded.
+
 Safe to restart: SGAIDs already present in the output file are skipped.
 
 Hiccup protection: NED VOTable responses declare their row count in a
 RECORDS_RETURNED parameter. If NED declares N > 0 rows but delivers 0, the
 response is flagged ERROR='hiccup' and the query is retried once automatically.
 If the overview step succeeds in finding a NED name but returns no data, it is
-flagged ERROR='overview_failed' rather than being silently empty.
+flagged ERROR='overview_failed' rather than being silently empty. This is
+separate from the OBJNAME fallback above, which retries with a different
+query target rather than the same one.
 
 Throughput with default settings (--maxconcurrent 10, --delay 0.1):
   ~8 NED requests/s -> ~4 gal/s (bypos, 2 calls each) or ~8 gal/s (byname,
@@ -381,27 +391,43 @@ async def _process_byname(session, sga_id, objname, ned_target, semaphore, delay
 
 
 async def _process_multi(session, sga_id, ned_name, endpoint, col_map, fields,
-                         semaphore, delay):
+                         semaphore, delay, fallback_name=''):
     """RedshiftsOfObject/DistancesOfObject for one galaxy, with hiccup retries.
+
+    If the primary ned_name query comes back empty (any error), and
+    fallback_name (the object's byname-submitted OBJNAME) is given and
+    differs from ned_name, retries once more with fallback_name -- NED's
+    name resolution isn't always symmetric, and the winning CROSSIDS[0]
+    name occasionally fails here even though OBJNAME resolves fine for the
+    same object.
 
     Always returns at least one row (so checkpoint/resume can mark the SGAID
     done even when NED has no measurements or the query fails).
     """
-    rows, err = [], 'hiccup'
-    for _ in range(2):
-        content = await _fetch(session, f'{NED_BASE}/{endpoint}',
-                               {'TARGET': ned_name}, semaphore, delay)
-        rows, err = parse_multi(content, col_map)
-        if err != 'hiccup':
-            break
+    async def _attempt(target):
+        rows, err = [], 'hiccup'
+        for _ in range(2):
+            content = await _fetch(session, f'{NED_BASE}/{endpoint}',
+                                   {'TARGET': target}, semaphore, delay)
+            rows, err = parse_multi(content, col_map)
+            if err != 'hiccup':
+                break
+        return rows, err
+
+    used_name = ned_name
+    rows, err = await _attempt(ned_name)
+    if not rows and fallback_name and fallback_name != ned_name:
+        fb_rows, fb_err = await _attempt(fallback_name)
+        if fb_rows:
+            rows, err, used_name = fb_rows, fb_err, fallback_name
 
     if not rows:
         return [{k: '' for k in fields} |
-                {'SGAID': sga_id, 'NED_NAME': ned_name, 'ERROR': err}]
+                {'SGAID': sga_id, 'NED_NAME': used_name, 'ERROR': err}]
 
     results = []
     for row in rows:
-        row.update({'SGAID': sga_id, 'NED_NAME': ned_name, 'ERROR': ''})
+        row.update({'SGAID': sga_id, 'NED_NAME': used_name, 'ERROR': ''})
         results.append({k: row.get(k, '') for k in fields})
     return results
 
@@ -432,17 +458,19 @@ async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, r
 
 
 async def _run_chunk_multi(ids, ned_names, outfile, fields, maxconcurrent, delay,
-                           endpoint, col_map):
+                           endpoint, col_map, fallback_names=None):
     """Process one chunk of galaxies (redshifts/distances) and append to outfile.
 
     Each task can return multiple rows (one per measurement), so results are
     flattened before writing.
     """
+    if fallback_names is None:
+        fallback_names = [''] * len(ids)
     semaphore = asyncio.Semaphore(maxconcurrent)
     async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
         tasks = [_process_multi(session, int(sid), str(name), endpoint, col_map, fields,
-                                semaphore, delay)
-                 for sid, name in zip(ids, ned_names)]
+                                semaphore, delay, fallback_name=str(fbname))
+                 for sid, name, fbname in zip(ids, ned_names, fallback_names)]
         nested = await asyncio.gather(*tasks)
     results = [row for rows in nested for row in rows]
 
@@ -493,15 +521,31 @@ def load_fullsample_targets(ned_merged_path):
     richly-cross-identified object byname found for the same SGAID --
     confirmed to return zero RedshiftsOfObject/DistancesOfObject rows in
     that case (e.g. UGC 06451 / SGAID 5054374).
+
+    Also returns `fallback_targets`: dict[SGAID -> OBJNAME] for objects
+    where the byname query itself succeeded (NED_ERROR_BYNAME == ''). NED's
+    name resolution isn't always symmetric -- a winning CROSSIDS[0] target
+    can fail in RedshiftsOfObject/DistancesOfObject even though the
+    originally-submitted OBJNAME resolves fine for the same object (e.g.
+    'SDSS 587739302613680312' fails, 'SDSS J133845.98+323042.0' succeeds).
+    Used by run_multi as a per-object retry target when the primary lookup
+    comes back empty.
     """
-    tbl = Table(fitsio.read(ned_merged_path, columns=['SGAID', 'CROSSIDS', 'NED_NAME']))
-    targets = {}
+    tbl = Table(fitsio.read(ned_merged_path,
+                columns=['SGAID', 'CROSSIDS', 'NED_NAME', 'OBJNAME', 'NED_ERROR_BYNAME']))
+    targets  = {}
+    fallback = {}
     for row in tbl:
+        sid      = int(row['SGAID'])
         crossids = str(row['CROSSIDS']).strip()
         name     = crossids.split('|')[0].strip() if crossids else str(row['NED_NAME']).strip()
         if name:
-            targets[int(row['SGAID'])] = name
-    return targets
+            targets[sid] = name
+        if str(row['NED_ERROR_BYNAME']) == '':
+            objname = str(row['OBJNAME']).strip()
+            if objname:
+                fallback[sid] = objname
+    return targets, fallback
 
 
 # ---------------------------------------------------------------------------
@@ -518,22 +562,25 @@ def run_multi(args):
         raise SystemExit(f'{ned_merged_path} does not exist; run SGA2025-ned-merge first.')
 
     log.info(f'Resolving NED targets from {ned_merged_path}')
-    targets  = load_fullsample_targets(ned_merged_path)
+    targets, fallback_targets = load_fullsample_targets(ned_merged_path)
     sgaid    = np.array(sorted(targets.keys()))
     ned_name = np.array([targets[s] for s in sgaid])
+    fallback_name = np.array([fallback_targets.get(s, '') for s in sgaid])
     log.info(f'  {len(sgaid):,d} NED-matched objects')
 
     if args.ntest > 0:
         log.info(f'Test mode: {args.ntest} objects')
-        sgaid    = sgaid[:args.ntest]
-        ned_name = ned_name[:args.ntest]
+        sgaid         = sgaid[:args.ntest]
+        ned_name      = ned_name[:args.ntest]
+        fallback_name = fallback_name[:args.ntest]
 
     done = _load_done(outfile)
     if done:
         log.info(f'Resuming: {len(done)} SGAIDs already done, skipping')
-    mask     = np.array([int(s) not in done for s in sgaid])
-    sgaid    = sgaid[mask]
-    ned_name = ned_name[mask]
+    mask          = np.array([int(s) not in done for s in sgaid])
+    sgaid         = sgaid[mask]
+    ned_name      = ned_name[mask]
+    fallback_name = fallback_name[mask]
 
     ntotal  = len(sgaid)
     nchunks = int(np.ceil(ntotal / args.chunksize))
@@ -547,7 +594,8 @@ def run_multi(args):
         sl = slice(ichunk * args.chunksize, (ichunk + 1) * args.chunksize)
         nested = asyncio.run(
             _run_chunk_multi(sgaid[sl], ned_name[sl], outfile, fields,
-                             args.maxconcurrent, args.delay, endpoint, col_map)
+                             args.maxconcurrent, args.delay, endpoint, col_map,
+                             fallback_names=fallback_name[sl])
         )
         ndone   += len(nested)
         elapsed  = time.time() - t0

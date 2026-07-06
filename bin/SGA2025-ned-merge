@@ -239,29 +239,45 @@ def _ival(s, missing=-1):
 def load_redshift_alternates(path):
     """Load a SGA2025-ned-query --querytype redshifts CSV.
 
-    Returns dict[int SGAID -> list of measurement dicts] built from
-    successful (ERROR == '') rows only, or {} if path is missing.
+    Returns (measurements, resolved):
+      measurements: dict[int SGAID -> list of measurement dicts] built from
+        successful (ERROR == '') rows only.
+      resolved: set of SGAIDs whose row has ERROR in ('', 'no_match') --
+        NED was queried and gave a definitive answer (real measurements, or
+        a genuine confirmation that it has none). SGAIDs entirely absent
+        from the file, or present with some other ERROR (e.g. 'parse_error',
+        a server hiccup that survived the query-time retry), are not
+        resolved -- they need to be requeried.
+
+    Both are empty if path is missing.
     """
-    out = {}
+    measurements = {}
+    resolved = set()
     if not os.path.exists(path):
-        return out
+        return measurements, resolved
     with open(path, newline='') as f:
         for row in csv.DictReader(f):
-            if row.get('ERROR', ''):
-                continue
             try:
                 sid = int(row['SGAID'])
-                z   = float(row['NED_Z'])
             except (KeyError, ValueError):
                 continue
-            out.setdefault(sid, []).append({
+            err = row.get('ERROR', '')
+            if err in ('', 'no_match'):
+                resolved.add(sid)
+            if err:
+                continue
+            try:
+                z = float(row['NED_Z'])
+            except (KeyError, ValueError):
+                continue
+            measurements.setdefault(sid, []).append({
                 'z':            z,
                 'unc_z':        _fval(row.get('NED_Z_UNC', ''), float),
                 'z_technique':  row.get('NED_Z_TECHNIQUE', ''),
                 'quality_flag': row.get('NED_Z_QUALITY', ''),
                 'reference':    row.get('NED_Z_REF', ''),
             })
-    return out
+    return measurements, resolved
 
 
 def _match_measurement(zval, measurements, tol):
@@ -375,7 +391,8 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     bypos  = load_csv(bypos_path)
     log.info(f'  byname: {len(byname):,d} rows   bypos: {len(bypos):,d} rows')
 
-    redshift_alts = load_redshift_alternates(redshifts_path)
+    redshift_alts, redshift_resolved = load_redshift_alternates(redshifts_path)
+    redshifts_file_found = os.path.exists(redshifts_path)
     if redshift_alts:
         log.info(f'  redshift alternates: {len(redshift_alts):,d} SGAIDs from {redshifts_path}')
     else:
@@ -422,6 +439,7 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
 
     # Build output columns
     cols = {c: [] for c in OUT_COLS}
+    missing_redshift_sgaids = []
 
     for i in range(n):
         sid  = int(sga_id[i])
@@ -474,6 +492,9 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
             src, source_str = brow, 'byname'   # position off but name match still valid
         else:
             src, source_str = {}, 'none'
+
+        if source_str != 'none' and redshifts_file_found and sid not in redshift_resolved:
+            missing_redshift_sgaids.append(sid)
 
         # Identification and resolution columns
         cols['SGAID'].append(sid)
@@ -572,6 +593,13 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
         cols['NED_Z_TECHNIQUE'].append(str(technique))
         cols['NED_Z_QUALITY'].append(str(quality))
         cols['NED_FLAG'][-1] = np.int32(flag)
+
+    if missing_redshift_sgaids:
+        log.warning(
+            f'{region}: {len(missing_redshift_sgaids):,d} objects have a NED match '
+            f'(byname/bypos) but no resolved entry in {redshifts_path} (missing or '
+            f'errored, excluding genuine no_match) -- SGAIDs: {missing_redshift_sgaids}'
+        )
 
     # Assemble and write the FITS table
     t = Table()
