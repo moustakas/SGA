@@ -24,6 +24,11 @@ down to "best" extragalactic spectra before matching:
   3. ZWARNING_NOQSO == 0 for QSOs (ZWARNING is unreliable for QSOs' broad
      lines), ZWARNING == 0 for galaxies
 
+Match rows carry SPECOBJID (SDSS's own unique per-spectrum key, encoding
+plate/mjd/fiber/run2d -- used downstream instead of separate PLATE/MJD/
+FIBERID columns) and SEP_ARCSEC (for picking the closest match when more
+than one falls within the radius).
+
 Outputs:
   SGA2025-SDSS-DR17-matches-{region}.fits   one row per (SGA galaxy, SDSS spectrum)
   SGA2025-SDSS-DR17-summary-{region}.fits   one row per SGA galaxy (row-matched to fullsample)
@@ -48,7 +53,7 @@ ZCATFILE = os.path.join(
 SPECOBJFILE = os.path.join(sga_dir(), 'sample', 'redshifts', 'specObj-dr17.fits')
 
 SDSS_MATCH_COLS = [
-    'PLATE', 'MJD', 'FIBERID', 'CLASS', 'SUBCLASS',
+    'SPECOBJID', 'PLATE', 'MJD', 'FIBERID', 'CLASS', 'SUBCLASS',
     'Z', 'Z_ERR', 'ZWARNING', 'ZWARNING_NOQSO',
 ]
 
@@ -90,6 +95,13 @@ def _xyz(ra_deg, dec_deg):
 def _chord(radius_deg):
     """Angular radius (degrees) → chord distance on the unit sphere."""
     return 2.0 * np.sin(np.radians(radius_deg) / 2.0)
+
+
+def _angular_sep_arcsec(ra1, dec1, ra2, dec2):
+    """Small-angle angular separation in arcsec; adequate at the sub-arcmin
+    separations relevant here (--sdss-radius is a few arcsec)."""
+    cos_dec = np.cos(np.radians(dec1))
+    return np.sqrt(((ra2 - ra1) * cos_dec)**2 + (dec2 - dec1)**2) * 3600.
 
 
 def _match_one(args):
@@ -425,15 +437,23 @@ def _match_sdss(args):
     # Build match table: one row per (SGA galaxy, SDSS spectrum)
     # -------------------------------------------------------------------------
     log.info('Building match table...')
-    match_sgaids = []
+    match_sgaids  = []
     match_specidx = []
-    for sgaid, cand_idx in zip(sgaid_arr, cand_lists):
+    match_galidx  = []
+    for gal_i, (sgaid, cand_idx) in enumerate(zip(sgaid_arr, cand_lists)):
         for i in cand_idx:
             match_sgaids.append(sgaid)
             match_specidx.append(i)
+            match_galidx.append(gal_i)
 
-    match_table = spec_best[np.array(match_specidx, dtype=np.int64)]
+    match_specidx = np.array(match_specidx, dtype=np.int64)
+    match_galidx  = np.array(match_galidx,  dtype=np.int64)
+    sep_arcsec = _angular_sep_arcsec(ra_arr[match_galidx],   dec_arr[match_galidx],
+                                     spec_ra[match_specidx], spec_dec[match_specidx])
+
+    match_table = spec_best[match_specidx]
     match_table.add_column(np.array(match_sgaids, dtype=np.int64), name='SGAID', index=0)
+    match_table.add_column(sep_arcsec.astype(np.float32), name='SEP_ARCSEC')
     log.info(f'  Match table: {len(match_table):,d} rows')
 
     # -------------------------------------------------------------------------
