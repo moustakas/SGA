@@ -755,6 +755,14 @@ values; if one cluster dominates, its highest-quality measurement is
 adopted. Otherwise, or if no candidates exist, the result is flagged rather
 than silently trusted (see ``NED_FLAG`` / ``Z_FLAG`` in :ref:`bitmasks`).
 
+**Consensus override**
+
+DESI always wins normal priority when measured, so it is the only source
+that can end up adopted despite being the outlier: when DESI, SDSS, and NED
+are all measured and SDSS/NED agree with each other but not with DESI, the
+adopted redshift is replaced by SDSS's and flagged ``CONSENSUS_OVERRIDE``
+(see :ref:`bitmasks`).
+
 **Automatic NED override**
 
 This sample is overwhelmingly z < 0.3, so an adopted DESI/SDSS redshift
@@ -1015,8 +1023,10 @@ Multiple bits may be set simultaneously.
    * - ``DISCREPANCY``
      - 1
      - Any two measured redshifts (LVD, DESI, SDSS, NED) differ by more
-       than 1000 km/s in the rest frame; the adopted redshift should be
-       treated with caution
+       than 1000 km/s in the rest frame. Deliberately sensitive -- a coarse
+       literature NED redshift can exceed this against a precise DESI/SDSS
+       spectrum that is otherwise fine, so this bit alone does not imply
+       the adopted redshift is wrong
    * - ``NED_SUSPECT``
      - 2
      - NED is the sole redshift measurement (no LVD, DESI, or SDSS value)
@@ -1031,12 +1041,16 @@ Multiple bits may be set simultaneously.
      - NED is the sole redshift measurement (no LVD, DESI, or SDSS value)
        and its ``NED_FLAG`` has ``Z_MISSING`` set: NED had no default
        redshift, so the adopted value came from NED's full redshift list
-   * - ``AUTO_NED_OVERRIDE``
+   * - ``CONSENSUS_OVERRIDE``
      - 16
+     - DESI disagreed with SDSS and NED, which agreed with each other;
+       the adopted redshift was replaced by SDSS's
+   * - ``AUTO_NED_OVERRIDE``
+     - 32
      - Adopted DESI/SDSS redshift exceeded 0.3 and was automatically
        replaced by an independent NED measurement
    * - ``VI_REVIEWED``
-     - 32
+     - 64
      - Adopted redshift was set or confirmed by a manual visual-inspection
        pass; the final, human-authoritative bit
 
