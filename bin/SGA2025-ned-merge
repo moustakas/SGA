@@ -25,13 +25,20 @@ NED_FLAG bits
   0x10  FLAG_Z_UNRESOLVED suspect but no confident replacement   ->  needs targeted VI
   0x20  FLAG_Z_MISSING    no NED_Z at all in step 1              ->  adopted from
                           RedshiftsOfObject instead (see below)
+  0x40  FLAG_Z_CENSORED_PHOTOZ  adopted NED_Z's matched RedshiftsOfObject
+                          measurement has NED_Z_TECHNIQUE='P' (photometric)
+                                                                 ->  discarded,
+                          alternates considered
+  0x80  FLAG_Z_CENSORED_SDSS    adopted NED_Z came from an SDSS-compilation
+                          reference (SDSS_REF_RE)                ->  discarded,
+                          alternates considered
 
 The bypos columns NED_NAME, SEPARATION_ARCSEC, and NMATCHES are always written
 regardless of which source was chosen, for reference.
 
 Redshift override (optional --redshifts-glob input)
 ----------------------------------------------------
-This logic handles two distinct problems, both resolved against the full
+This logic handles three distinct problems, all resolved against the full
 RedshiftsOfObject query result for the SGAID (see SGA2025-ned-query
 --querytype redshifts):
 
@@ -45,9 +52,47 @@ RedshiftsOfObject query result for the SGAID (see SGA2025-ned-query
     even though the full RedshiftsOfObject list has real measurements not
     yet reflected in NED's own default. Triggered whenever NED_Z is missing,
     regardless of --z-swap-threshold.
+  * FLAG_Z_CENSORED_PHOTOZ / FLAG_Z_CENSORED_SDSS: the adopted default is
+    discarded outright regardless of its numeric value, since a
+    plausible-looking z (e.g. 0.15, well under --z-swap-threshold) from a
+    known-unreliable or soon-to-be-superseded source would otherwise pass
+    through silently. The overview (byname/bypos) response used for the
+    default NED_Z does not itself carry a measurement technique, so this
+    match is made against the full RedshiftsOfObject list: the overview's
+    NED_Z is looked up by value (within --z-match-tol) in that object's full
+    measurement list, populating NED_Z_TECHNIQUE/NED_Z_QUALITY for *every*
+    NED-sourced object (not just censored/suspect/missing ones) as a
+    byproduct -- this is the "provenance" enrichment referred to elsewhere.
+      - FLAG_Z_CENSORED_PHOTOZ: the matched measurement's NED_Z_TECHNIQUE is
+        'P' (photometric). Cross-matching the adopted NED_Z in
+        SGA2025-v1.0.fits against ned-redshifts-dr11-*.csv this way showed
+        ~92,737 objects (30% of all NED-sourced redshifts) are photometric,
+        the overwhelming majority (~92,236) from a single reference,
+        Bilicki et al. 2014's 2MASS Photometric Redshift catalog
+        ('2014ApJS..210....9B'). Because censorship is technique-based
+        rather than reference-based, the ~6,825 genuine spectroscopic
+        measurements folded into that same reference (NED_Z_TECHNIQUE='S')
+        are correctly kept. If no matching measurement is found (e.g.
+        --redshifts-glob missing for the region, or the default predates
+        the full-list query and doesn't match anything in it), technique is
+        unknown and this bit is never set -- graceful, conservative
+        degradation.
+      - FLAG_Z_CENSORED_SDSS: the overview's own NED_Z_REF matches
+        SDSS_REF_RE -- NED's synthetic per-data-release SDSS compilation
+        bibcodes (e.g. '2016SDSSD.C...0000:'), not real literature
+        references, and not accompanied by SDSS's own ZWARNING. This check
+        does not depend on --redshifts-glob. These are superseded by
+        SGA2025-desi-dr1-match --sdss, which matches the sample directly
+        against specObj-dr17.fits with real ZWARNING; once that's wired
+        into SGA2025-build-catalog it takes priority over anything NED
+        reports for the same spectrum.
+    Censored candidates are also excluded from the alternates considered
+    below (by the same technique/reference tests), so the override logic
+    can't quietly re-adopt one via clustering.
 
-In both cases, alternative measurements with z <= --z-swap-threshold are
-considered:
+In all three cases, alternative measurements with z <= --z-swap-threshold are
+considered (also excluding any candidate that is itself photometric or
+SDSS-sourced):
   1. Candidates are grouped into clusters of mutually agreeing measurements
      (relative gap |dz|/(1+z) < --z-cluster-tol, default 0.01).
   2. If one cluster is strictly the largest (including the trivial case of a
@@ -58,14 +103,21 @@ considered:
      lowest-z candidate is adopted as a best guess and FLAG_Z_UNRESOLVED is
      set. FLAG_Z_UNRESOLVED is also set (with no change to NED_Z) when there
      are zero candidates at or below threshold.
-For the FLAG_Z_SUSPECT case, the original suspect value is preserved in
-NED_Z_ORIG; for FLAG_Z_MISSING, NED_Z_ORIG stays NaN since there was nothing
-to replace. NED_Z_NCAND/NED_Z_NALT record the number of candidates and the
-size of the adopted cluster in either case. If NED_Z is missing and no
-candidates are found, NED_Z is left as NaN and no flag is set -- this is the
-ordinary case of a genuinely unmeasured object and should not be flagged.
-This step is skipped gracefully (no flags set) when --redshifts-glob has no
-file for a region.
+For the FLAG_Z_SUSPECT and FLAG_Z_CENSORED_* cases, the original (suspect or
+censored) value is preserved in NED_Z_ORIG; for FLAG_Z_MISSING, NED_Z_ORIG
+stays NaN since there was nothing to replace. NED_Z_NCAND/NED_Z_NALT record
+the number of candidates and the size of the adopted cluster in all cases
+where a replacement was sought. NED_Z_TECHNIQUE/NED_Z_QUALITY reflect
+whichever measurement is ultimately adopted (the original default, or the
+override's pick if one was found); if nothing is adopted (NED_Z left NaN),
+they describe the discarded default when one existed (e.g. a censored or
+unresolved-suspect value), and are blank for a genuinely unmeasured object.
+If NED_Z is missing and no candidates are found, NED_Z is left as NaN and no
+additional flag is set beyond any censorship bit already applied -- a
+genuinely unmeasured object (no censorship involved) is not flagged at all.
+The override attempt itself is skipped gracefully when --redshifts-glob has
+no file for a region, but FLAG_Z_CENSORED_SDSS (reference-based, not
+dependent on the full measurement list) still applies.
 
 Outputs (written to --outdir)
 ------------------------------
@@ -83,6 +135,7 @@ Examples
 
 """
 import os
+import re
 import csv
 import argparse
 import numpy as np
@@ -96,12 +149,19 @@ from SGA.logger import log
 # ---------------------------------------------------------------------------
 # Flag bits
 # ---------------------------------------------------------------------------
-FLAG_LARGE_SEP    = 0x01   # byname offset > threshold (may still use byname if name-confirmed)
-FLAG_BYNAME_FAIL  = 0x02   # byname error/no-match -> used bypos
-FLAG_BYPOS_FAIL   = 0x04   # bypos also error/no-match -> result incomplete
-FLAG_Z_SUSPECT    = 0x08   # adopted NED_Z > z-swap-threshold -> alternates considered
-FLAG_Z_UNRESOLVED = 0x10   # suspect but no confident replacement found -> needs VI
-FLAG_Z_MISSING    = 0x20   # no NED_Z at all -> adopted from RedshiftsOfObject instead
+FLAG_LARGE_SEP         = 0x01   # byname offset > threshold (may still use byname if name-confirmed)
+FLAG_BYNAME_FAIL       = 0x02   # byname error/no-match -> used bypos
+FLAG_BYPOS_FAIL        = 0x04   # bypos also error/no-match -> result incomplete
+FLAG_Z_SUSPECT         = 0x08   # adopted NED_Z > z-swap-threshold -> alternates considered
+FLAG_Z_UNRESOLVED      = 0x10   # suspect but no confident replacement found -> needs VI
+FLAG_Z_MISSING         = 0x20   # no NED_Z at all -> adopted from RedshiftsOfObject instead
+FLAG_Z_CENSORED_PHOTOZ = 0x40   # matched NED_Z_TECHNIQUE='P' -> discarded, alternates considered
+FLAG_Z_CENSORED_SDSS   = 0x80   # NED_Z_REF is an SDSS-compilation bibcode -> discarded
+
+# NED's synthetic per-data-release SDSS compilation bibcodes, e.g.
+# '2016SDSSD.C...0000:', '2003SDSS1.C...0000:' -- not real literature
+# references. Superseded by SGA2025-desi-dr1-match --sdss.
+SDSS_REF_RE = re.compile(r'^\d{4}SDSS')
 
 # ---------------------------------------------------------------------------
 # Column type classification
@@ -138,7 +198,7 @@ OUT_COLS = (
      'BYNAME_SEP_ARCSEC', 'NED_SOURCE', 'NED_FLAG',
      'NED_ERROR_BYNAME', 'NED_ERROR_BYPOS']
     + OVERVIEW_FIELDS
-    + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT']
+    + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT', 'NED_Z_TECHNIQUE', 'NED_Z_QUALITY']
 )
 
 
@@ -204,6 +264,26 @@ def load_redshift_alternates(path):
     return out
 
 
+def _match_measurement(zval, measurements, tol):
+    """Find the RedshiftsOfObject measurement matching an overview NED_Z
+    value (by nearest z, within absolute `tol`), to recover its
+    NED_Z_TECHNIQUE/NED_Z_QUALITY -- fields the overview response itself
+    doesn't carry. Returns the measurement dict, or None if there is no
+    measurement list or no candidate within tolerance."""
+    if not measurements or np.isnan(zval):
+        return None
+    best = min(measurements, key=lambda m: abs(m['z'] - zval))
+    return best if abs(best['z'] - zval) < tol else None
+
+
+def _is_sdss_ref(reference):
+    return bool(SDSS_REF_RE.match(str(reference)))
+
+
+def _is_photoz(measurement):
+    return measurement is not None and str(measurement['z_technique']).strip().upper() == 'P'
+
+
 def _cluster_indices(zs, tol):
     """Group indices of zs into clusters via nearest-neighbor chaining in
     sorted order, with adjacent relative gap |dz|/(1+z) < tol."""
@@ -241,8 +321,9 @@ def _pick_best_measurement(indices, measurements):
 
 
 def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
-    """Pick a replacement for a suspect (> swap_threshold) adopted NED_Z from
-    the full list of RedshiftsOfObject measurements for one SGAID.
+    """Pick a replacement for a suspect (> swap_threshold), missing, or
+    censored adopted NED_Z from the full list of RedshiftsOfObject
+    measurements for one SGAID.
 
     Candidates (z <= swap_threshold) are grouped into clusters of mutually
     agreeing values. If one cluster is strictly the largest (including the
@@ -250,6 +331,10 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
     is adopted (confident). Otherwise -- tied clusters, i.e. genuinely
     disagreeing candidates -- the lowest-z candidate is adopted as a best
     guess and marked unresolved. Returns None if there are no candidates.
+
+    `measurements` is expected to already have censored (photometric or
+    SDSS-sourced) entries filtered out by the caller, so a censored value
+    can never be re-adopted here.
     """
     candidates = [m for m in measurements if m['z'] <= swap_threshold]
     if not candidates:
@@ -270,6 +355,7 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
     m = candidates[best]
     return {
         'z': m['z'], 'unc_z': m['unc_z'], 'reference': m['reference'],
+        'technique': m['z_technique'], 'quality': m['quality_flag'],
         'unresolved': unresolved, 'n_candidates': len(candidates), 'n_cluster': maxsize,
     }
 
@@ -278,7 +364,7 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, outdir, sep_threshold, redshifts_glob,
-                 z_swap_threshold, z_cluster_tol):
+                 z_swap_threshold, z_cluster_tol, z_match_tol):
     byname_path    = os.path.join(outdir, f'ned-byname-{region}.csv')
     bypos_path     = os.path.join(outdir, f'ned-bypos-{region}.csv')
     redshifts_path = os.path.join(outdir, redshifts_glob.format(region=region))
@@ -418,37 +504,64 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
             else:
                 cols[col].append(str(raw))
 
-        # Redshift override: two distinct problems, both resolved against the
-        # object's full RedshiftsOfObject measurements.
+        # Redshift resolution: three distinct problems, all resolved against
+        # the object's full RedshiftsOfObject measurements.
         #  - FLAG_Z_SUSPECT: NED assigned a bogus high fiducial redshift (e.g.
         #    SDSS fiber contamination from a background source); triggered
         #    when the adopted default exceeds z_swap_threshold.
         #  - FLAG_Z_MISSING: NED's overview has no default NED_Z at all, even
         #    though real measurements exist in the full query (e.g. UGC 06451).
-        zval      = cols['NED_Z'][-1]
-        z_orig    = np.nan
-        n_cand    = 0
-        n_alt     = 0
+        #  - FLAG_Z_CENSORED_PHOTOZ / _SDSS: the default is a photometric
+        #    redshift (matched technique='P') or an SDSS-compilation
+        #    reference; discarded regardless of its numeric value.
+        all_measurements = redshift_alts.get(sid)
+
+        zval    = cols['NED_Z'][-1]
+        matched = _match_measurement(zval, all_measurements, z_match_tol)
+        technique = matched['z_technique']  if matched else ''
+        quality   = matched['quality_flag'] if matched else ''
+
+        censored_photoz = _is_photoz(matched)
+        censored_sdss   = _is_sdss_ref(cols['NED_Z_REF'][-1])
+
+        z_orig = np.nan
+        n_cand = 0
+        n_alt  = 0
+
+        if censored_photoz or censored_sdss:
+            flag |= FLAG_Z_CENSORED_PHOTOZ if censored_photoz else 0
+            flag |= FLAG_Z_CENSORED_SDSS   if censored_sdss   else 0
+            z_orig = zval
+            cols['NED_Z'][-1]     = np.float64('nan')
+            cols['NED_Z_UNC'][-1] = np.float64('nan')
+            cols['NED_Z_REF'][-1] = ''
+            zval = np.nan
+
         z_missing = np.isnan(zval)
         z_suspect = (not z_missing) and zval > z_swap_threshold
+
         if z_missing or z_suspect:
             if z_suspect:
                 flag |= FLAG_Z_SUSPECT
                 z_orig = zval
-            measurements = redshift_alts.get(sid)
-            result = (resolve_redshift_override(measurements, z_swap_threshold, z_cluster_tol)
-                      if measurements else None)
+            candidates = None
+            if all_measurements:
+                candidates = [m for m in all_measurements
+                             if not _is_photoz(m) and not _is_sdss_ref(m['reference'])]
+            result = (resolve_redshift_override(candidates, z_swap_threshold, z_cluster_tol)
+                      if candidates else None)
             if result is None:
-                if z_suspect:
+                if z_suspect or censored_photoz or censored_sdss:
                     flag |= FLAG_Z_UNRESOLVED
-                # z_missing with no candidates: leave NED_Z as NaN, no flag --
-                # this is the ordinary unmeasured case, not worth flagging.
+                # otherwise: genuinely unmeasured object, no flag -- ordinary case
             else:
-                if z_missing:
+                if z_missing and not (censored_photoz or censored_sdss):
                     flag |= FLAG_Z_MISSING
                 cols['NED_Z'][-1]     = result['z']
                 cols['NED_Z_UNC'][-1] = result['unc_z']
                 cols['NED_Z_REF'][-1] = result['reference']
+                technique = result['technique']
+                quality   = result['quality']
                 n_cand = result['n_candidates']
                 n_alt  = result['n_cluster']
                 if result['unresolved']:
@@ -456,6 +569,8 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
         cols['NED_Z_ORIG'].append(np.float64(z_orig))
         cols['NED_Z_NCAND'].append(np.int32(n_cand))
         cols['NED_Z_NALT'].append(np.int32(n_alt))
+        cols['NED_Z_TECHNIQUE'].append(str(technique))
+        cols['NED_Z_QUALITY'].append(str(quality))
         cols['NED_FLAG'][-1] = np.int32(flag)
 
     # Assemble and write the FITS table
@@ -488,6 +603,10 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     n_zsus   = int(np.sum((flags & FLAG_Z_SUSPECT)    != 0))
     n_zunres = int(np.sum((flags & FLAG_Z_UNRESOLVED) != 0))
     n_zmiss  = int(np.sum((flags & FLAG_Z_MISSING)    != 0))
+    n_zphoto = int(np.sum((flags & FLAG_Z_CENSORED_PHOTOZ) != 0))
+    n_zsdss  = int(np.sum((flags & FLAG_Z_CENSORED_SDSS)   != 0))
+    n_zsus_resolved = int(np.sum(((flags & FLAG_Z_SUSPECT) != 0) & ((flags & FLAG_Z_UNRESOLVED) == 0)))
+    n_no_z   = int(np.sum(np.isnan(t['NED_Z'])))
     n_any    = int(np.sum(flags != 0))
 
     sga_id_set  = set(int(x) for x in sga_id)
@@ -507,10 +626,16 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     print(f'    BYNAME_FAIL  (0x02) : {n_bfail:>8,d}  ({pct(n_bfail):5.1f}%)')
     print(f'    BYPOS_FAIL   (0x04) : {n_pfail:>8,d}  ({pct(n_pfail):5.1f}%)')
     print(f'    Z_SUSPECT    (0x08) : {n_zsus:>8,d}  ({pct(n_zsus):5.1f}%)  '
-          f'(resolved: {n_zsus - n_zunres:,d})')
-    print(f'    Z_UNRESOLVED (0x10) : {n_zunres:>8,d}  ({pct(n_zunres):5.1f}%)')
+          f'(resolved: {n_zsus_resolved:,d})')
+    print(f'    Z_UNRESOLVED (0x10) : {n_zunres:>8,d}  ({pct(n_zunres):5.1f}%)  '
+          f'(no longer implies Z_SUSPECT -- also set by an unresolved censorship)')
     print(f'    Z_MISSING    (0x20) : {n_zmiss:>8,d}  ({pct(n_zmiss):5.1f}%)')
+    print(f'    Z_CENS_PHOTOZ(0x40) : {n_zphoto:>8,d}  ({pct(n_zphoto):5.1f}%)')
+    print(f'    Z_CENS_SDSS  (0x80) : {n_zsdss:>8,d}  ({pct(n_zsdss):5.1f}%)')
     print(f'    any flag set        : {n_any:>8,d}  ({pct(n_any):5.1f}%)')
+    print()
+    print(f'  NED_Z unset after resolution : {n_no_z:>8,d}  ({pct(n_no_z):5.1f}%)  '
+          f'(includes censored objects with no non-censored alternate)')
     print()
     print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
     print(f'  Missing from bypos  CSV : {n_no_bypos:>8,d}')
@@ -541,12 +666,17 @@ def main():
     parser.add_argument('--z-cluster-tol', type=float, default=0.01,
                         help='Relative tolerance |dz|/(1+z) for grouping repeat redshift '
                              'measurements into the same cluster (default: 0.01)')
+    parser.add_argument('--z-match-tol', type=float, default=1e-4,
+                        help='Absolute tolerance in z for matching the overview NED_Z value '
+                             'against the full RedshiftsOfObject list, to recover its '
+                             'NED_Z_TECHNIQUE/NED_Z_QUALITY for the photo-z censorship check '
+                             '(default: 1e-4)')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
-        merge_region(region, args.outdir, args.sep_threshold,
-                     args.redshifts_glob, args.z_swap_threshold, args.z_cluster_tol)
+        merge_region(region, args.outdir, args.sep_threshold, args.redshifts_glob,
+                     args.z_swap_threshold, args.z_cluster_tol, args.z_match_tol)
 
 
 if __name__ == '__main__':
