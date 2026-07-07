@@ -149,9 +149,19 @@ NED_DIST_DIRECT* columns and are otherwise unaffected.
 For an SGAID with a gold-tier method present, the single measurement with
 the lowest NED_DISTMOD_UNC is adopted (rows with no reported uncertainty
 sort last, tie-broken by the most recent reference year -- the same idiom
-as the redshift override's _pick_best_measurement). This step only
-populates new columns; it does not change NED_DIST/NED_DIST_UNC or which
-DIST value SGA2025-build-catalog ultimately adopts.
+as the redshift override's _pick_best_measurement) -- unless that top
+method isn't independently replicated (fewer than MIN_CONFIDENT_REFS=3
+distinct references) *and* a lower-priority method is both confidently
+replicated and tightly self-consistent (every measurement within
+DIST_CLUSTER_TOL=15% of the group's median) *and* disagrees with the top
+method's value by more than that same tolerance -- in which case the
+lower-priority method's mean and sample standard deviation are adopted
+instead (NED_DIST_DIRECT_REF='MULTIPLE', no single bibcode applying to an
+averaged value). See resolve_distance_gold's docstring for a real example
+(SGAID 5053902 / UGC 9128: a single-reference, internally-inconsistent
+Cepheid pair is discarded in favor of an 8-reference TRGB consensus). This
+step only populates new columns; it does not change NED_DIST/NED_DIST_UNC
+or which DIST value SGA2025-build-catalog ultimately adopts.
 
 The override attempt is skipped gracefully when --distances-glob has no
 file for a region (existing NED_DIST/NED_DIST_UNC columns are unaffected
@@ -209,6 +219,14 @@ SDSS_REF_RE = re.compile(r'^\d{4}SDSS')
 # uncertainty) is deliberately excluded.
 DIST_GOLD_METHODS = ['Cepheids', 'TRGB', 'PNLF', 'SBF', 'SNIa',
                       'SNII optical', 'GCLF', 'SNIa SDSS']
+
+# Cross-tier consistency check (resolve_distance_gold): a method with fewer
+# than this many distinct references isn't independently replicated, and
+# gets cross-checked against a lower-priority method instead of trusted
+# outright. Reused as the "tight cluster" / "agrees with" relative-distance
+# tolerance too, so there's one fewer magic number in the picture.
+MIN_CONFIDENT_REFS = 3
+DIST_CLUSTER_TOL   = 0.15
 
 # ---------------------------------------------------------------------------
 # Column type classification
@@ -454,29 +472,17 @@ def load_distance_alternates(path):
     return out
 
 
-def resolve_distance_gold(measurements):
-    """Pick the single best gold-tier direct distance measurement for one
-    SGAID, or None if no DIST_GOLD_METHODS method is present.
-
-    Finds the highest-priority method (lowest DIST_GOLD_METHODS index)
-    present among `measurements`, then among that method's own rows picks
-    the one with the lowest NED_DISTMOD_UNC (rows with no reported
+def _pick_best_distance(rows):
+    """Return the row with the lowest NED_DISTMOD_UNC (rows with no reported
     uncertainty sort last, tie-broken by the most recent reference year --
-    same idiom as _pick_best_measurement). The selection ranking stays in
+    same idiom as _pick_best_measurement), converted to a
+    dist/unc(Mpc)/method/reference dict. The selection ranking stays in
     magnitude space (the astronomically meaningful precision metric), but
     the returned 'unc' is converted to Mpc via the standard distance-modulus
     propagation (sigma_D = D * ln(10)/5 * sigma_mu) -- 'unc' as loaded from
     NED_DISTMOD_UNC is a mag, not a distance, and DIST_IVAR downstream needs
     a real Mpc-scale uncertainty.
     """
-    gold = [m for m in measurements if m['method'] in DIST_GOLD_METHODS]
-    if not gold:
-        return None
-
-    best_rank = min(DIST_GOLD_METHODS.index(m['method']) for m in gold)
-    best_method = DIST_GOLD_METHODS[best_rank]
-    candidates = [m for m in gold if m['method'] == best_method]
-
     def rank(m):
         has_unc = not np.isnan(m['unc'])
         try:
@@ -485,13 +491,83 @@ def resolve_distance_gold(measurements):
             year = 0
         return (0 if has_unc else 1, m['unc'] if has_unc else 0., year)
 
-    m = min(candidates, key=rank)
+    m = min(rows, key=rank)
     unc_mag = m['unc']
     unc_mpc = (m['dist'] * np.log(10.) / 5. * unc_mag) if not np.isnan(unc_mag) else np.float64('nan')
     return {
         'dist': m['dist'], 'unc': unc_mpc,
         'method': m['method'], 'reference': m['reference'],
     }
+
+
+def _distinct_refs(rows):
+    return {r['reference'] for r in rows}
+
+
+def _is_tight_cluster(rows, tol):
+    """True if every row's distance is within `tol` (relative) of the
+    group's median."""
+    ds  = [r['dist'] for r in rows]
+    med = np.median(ds)
+    return all(abs(d - med) / med <= tol for d in ds)
+
+
+def resolve_distance_gold(measurements):
+    """Pick the best gold-tier direct distance measurement for one SGAID,
+    or None if no DIST_GOLD_METHODS method is present.
+
+    Finds the highest-priority method (lowest DIST_GOLD_METHODS index)
+    present among `measurements` and picks its single best row (see
+    _pick_best_distance). If that top method has fewer than
+    MIN_CONFIDENT_REFS distinct references (i.e. isn't independently
+    replicated -- e.g. two measurements from the same single paper), it
+    can't be trusted outright: this looks for the first lower-priority
+    method that *is* confidently replicated (>= MIN_CONFIDENT_REFS distinct
+    references) and tightly self-consistent (_is_tight_cluster). If found
+    and it disagrees with the top method's candidate by more than
+    DIST_CLUSTER_TOL, the top method's value is discarded in favor of the
+    confident method's mean and sample standard deviation (reference
+    'MULTIPLE', since no single bibcode applies to an averaged value). If
+    the top method is already confidently replicated, or no confident
+    lower-priority alternative disagrees with it, behavior is unchanged:
+    the top method's own best single measurement is returned.
+
+    Real example (SGAID 5053902 / UGC 9128): the only 'Cepheids' data are
+    two rows from a single 1998 paper disagreeing with each other by
+    ~1 Mpc (6.05 vs. 7.05) -- 1 distinct reference, not confident. 'TRGB'
+    has 8 independent references tightly clustered around 2.27 Mpc
+    (std 0.10), matching LVD's own value (2.24) closely. The lone Cepheid
+    pick (7.05) disagrees with the TRGB cluster by ~210%, so TRGB's
+    mean/std is adopted instead.
+    """
+    gold = [m for m in measurements if m['method'] in DIST_GOLD_METHODS]
+    if not gold:
+        return None
+
+    by_method = {m: [r for r in gold if r['method'] == m]
+                 for m in {r['method'] for r in gold}}
+    present_ranks = sorted(DIST_GOLD_METHODS.index(m) for m in by_method)
+
+    method0   = DIST_GOLD_METHODS[present_ranks[0]]
+    rows0     = by_method[method0]
+    candidate = _pick_best_distance(rows0)
+
+    if len(_distinct_refs(rows0)) < MIN_CONFIDENT_REFS:
+        for frank in present_ranks[1:]:
+            fmethod = DIST_GOLD_METHODS[frank]
+            frows   = by_method[fmethod]
+            if (len(_distinct_refs(frows)) >= MIN_CONFIDENT_REFS
+                    and _is_tight_cluster(frows, DIST_CLUSTER_TOL)):
+                fdists = [r['dist'] for r in frows]
+                fmean  = float(np.mean(fdists))
+                if abs(candidate['dist'] - fmean) / fmean > DIST_CLUSTER_TOL:
+                    return {
+                        'dist': fmean, 'unc': float(np.std(fdists, ddof=1)),
+                        'method': fmethod, 'reference': 'MULTIPLE',
+                    }
+                break   # fallback agrees -- stop looking, keep top-tier candidate
+
+    return candidate
 
 
 # ---------------------------------------------------------------------------
