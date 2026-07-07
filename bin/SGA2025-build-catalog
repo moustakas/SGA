@@ -868,7 +868,8 @@ def _reorder_cols(tbl):
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                  desi_max_sep, lvd_catalog=None, parent_nocuts=None,
-                 ned_override_zmin=0.3, vi_redshifts=None, lines=None, h0=70.):
+                 ned_override_zmin=0.3, vi_redshifts=None, lines=None, h0=70.,
+                 dist_ivar_floor=0.15):
     def emit(msg=''):
         print(msg)
         if lines is not None:
@@ -1501,6 +1502,19 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         dist_arrs['DIST_METHOD'][use_hflow] = 'HUBBLE_FLOW'
     log.info(f'  Hubble-flow distance (H0={h0:g} km/s/Mpc): {n_hflow:,d} objects')
 
+    # --- Adopted DIST_IVAR floor: sources with no reported uncertainty ----
+    # (most commonly LVD -- see the assessment in the distance-quality work)
+    # get a floor of dist_ivar_floor * DIST instead of DIST_IVAR=0. Only the
+    # adopted DIST_IVAR is floored; the per-source diagnostic columns
+    # (DIST_IVAR_LVD, DIST_IVAR_NED_DIRECT, DIST_IVAR_NED) are left as raw
+    # values (0 = "source reported no error"), preserving that provenance.
+    missing_ivar = (dist_arrs['DIST'] > 0.) & (dist_arrs['DIST_IVAR'] == 0.)
+    n_floored = int(np.sum(missing_ivar))
+    if n_floored:
+        sigma_floor = dist_ivar_floor * dist_arrs['DIST'][missing_ivar]
+        dist_arrs['DIST_IVAR'][missing_ivar] = np.float32(1. / sigma_floor**2)
+    log.info(f'  DIST_IVAR floor ({dist_ivar_floor:.0%} of DIST): {n_floored:,d} objects')
+
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
     crossids_col = ned_arrs.get('CROSSIDS')
     galaxy_arr   = np.full(n, '', dtype='U35')
@@ -1941,6 +1955,11 @@ def main():
                         help='Hubble constant (km/s/Mpc) for the Hubble-flow distance '
                              '(DIST_REF=ZCOSMO), adopted from Z_COSMO for objects with no '
                              'NED_DIRECT/LVD/NED distance (default: 70)')
+    parser.add_argument('--dist-ivar-floor', type=float, default=0.15,
+                        help='Fractional distance-uncertainty floor applied to the adopted '
+                             'DIST_IVAR wherever the source reported no uncertainty (most '
+                             'commonly LVD); empirically calibrated to the LVD-vs-gold-tier '
+                             'agreement (default: 0.15)')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
@@ -1962,7 +1981,8 @@ def main():
                      lvd_catalog=args.lvd_catalog,
                      parent_nocuts=args.parent_nocuts,
                      ned_override_zmin=args.ned_override_zmin,
-                     vi_redshifts=args.vi_redshifts, lines=lines, h0=args.h0)
+                     vi_redshifts=args.vi_redshifts, lines=lines, h0=args.h0,
+                     dist_ivar_floor=args.dist_ivar_floor)
 
     if args.region is None:
         merge_regions(args.outdir, lines=lines)
