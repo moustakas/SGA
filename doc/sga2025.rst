@@ -85,7 +85,9 @@ Individual galaxies within a group are identified by:
   coordinate name at 0.001° (3.6 arcsec) precision, formed from the fitted
   galaxy coordinates ``RA`` and ``DEC``.
 - ``OBJNAME`` (str30) — the common name from the input parent catalog
-  (HyperLeda, NED, `LVD <https://local-volume-database.readthedocs.io/en/latest/index.html>`_, etc.).
+  (`HyperLeda <http://atlas.obs-hp.fr/hyperleda/>`_,
+  `NED <https://ned.ipac.caltech.edu/>`_,
+  `LVD <https://local-volume-database.readthedocs.io/en/latest/index.html>`_, etc.).
 
 Galaxy Names: ``GALAXY`` and ``ALTNAMES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -175,7 +177,7 @@ Merged Catalogs
 
 The per-region merged catalogs combine all per-group ellipse
 photometry, `NASA/IPAC Extragalactic Database (NED)
-<https://ned.ipac.caltech.edu>`_ cross-matched results, spectroscopic
+<https://ned.ipac.caltech.edu/>`_ cross-matched results, spectroscopic
 redshifts from the `Dark Energy Spectroscopic Instrument Data Release
 1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1/>`_ and
 `SDSS DR17 <https://www.sdss4.org/dr17/>`_, and direct distances from the
@@ -715,7 +717,8 @@ Redshifts
 
 The merged catalogs cross-match four independent redshift sources —
 `DESI DR1 <https://data.desi.lbl.gov/doc/releases/dr1/>`_,
-`SDSS DR17 <https://www.sdss4.org/dr17/>`_, **NED**, and the
+`SDSS DR17 <https://www.sdss4.org/dr17/>`_,
+`NED <https://ned.ipac.caltech.edu/>`_, and the
 `Local Volume Database (LVD) <https://local-volume-database.readthedocs.io/en/latest/index.html>`_.
 
 **Adopted redshift (Z, Z_IVAR, Z_REF)**
@@ -817,7 +820,8 @@ Distances
 ~~~~~~~~~
 
 We assign distances from four sources, in priority order:
-high-precision "gold-tier" measurements compiled by NED, the
+high-precision "gold-tier" measurements compiled by
+`NED <https://ned.ipac.caltech.edu/>`_, the
 `Local Volume Database (LVD) <https://local-volume-database.readthedocs.io/en/latest/index.html>`_,
 NED's own blended "mean" distance, and — for every remaining galaxy with a
 measured redshift — a Hubble-flow distance derived from ``Z_COSMO``.

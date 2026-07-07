@@ -64,3 +64,9 @@ Instrument (DESI) <https://desi.lbl.gov>`_.
 .. toctree::
    :maxdepth: 1
    :caption: Reference
+
+.. toctree::
+   :maxdepth: 1
+   :caption: About
+
+   acknowledgments
