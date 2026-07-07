@@ -334,6 +334,10 @@ def _strip_zero_pad(s):
     """Lowercase, strip spaces, strip leading zeros from digit sequences."""
     return _ZERO_PAD_RE.sub('', s.lower().replace(' ', ''))
 
+# Matches the LVD catalog's short Messier form (e.g. 'M 33', 'M81'), used to
+# alias it to SGA's OBJNAME convention ('MESSIER 033', 'MESSIER 081').
+MESSIER_RE = re.compile(r'^M\s*(\d+)$', re.IGNORECASE)
+
 # Priority-ordered catalog prefixes for "famous name" promotion. When CROSSIDS
 # contains multiple names, the highest-priority match is promoted to GALAXY
 # regardless of NED's own choice. Prefixes absent from this list (2MASX, SDSS,
@@ -992,12 +996,28 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     ned_by_sgaid = {int(r['SGAID']): r for r in ned_tbl}
 
     # --- LVD catalog (distance takes precedence over NED for LVD objects) ---
-    # Match by OBJNAME; distance and errors converted from kpc to Mpc.
+    # Match by OBJNAME (plus a Messier short-form alias, e.g. 'M 33' ->
+    # 'MESSIER 033'); distance and errors converted from kpc to Mpc.
     lvd_by_name = {}
     if lvd_catalog:
         log.info(f'  Loading LVD catalog {lvd_catalog}')
         lvd = Table.read(lvd_catalog)
-        lvd_by_name = {str(r['name']): r for r in lvd}
+        # confirmed_real: 1/0/masked. Drop only explicit 0 (rejected);
+        # masked (unreviewed for this flag, e.g. long-known Messier
+        # galaxies) is kept -- np.asarray() on a masked column silently
+        # fills masked entries as 0, so the mask must be checked explicitly.
+        is_masked = np.ma.getmaskarray(lvd['confirmed_real'])
+        keep      = is_masked | (np.asarray(lvd['confirmed_real']) != 0)
+        n_dropped = int(np.sum(~keep))
+        if n_dropped:
+            log.info(f'  Dropping {n_dropped:,d}/{len(lvd):,d} LVD entries with confirmed_real=0')
+        lvd = lvd[keep]
+        for r in lvd:
+            name = str(r['name'])
+            lvd_by_name[name] = r
+            m = MESSIER_RE.match(name.strip())
+            if m:
+                lvd_by_name[f'MESSIER {int(m.group(1)):03d}'] = r
         is_lvd      = (beta['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
         log.info(f'  LVD catalog: {len(lvd):,d} entries; '
                  f'{int(np.sum(is_lvd)):,d} LVD objects in SGA sample')
@@ -1113,6 +1133,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 
     # --- Main resolution loop --------------------------------------------
     log.info(f'  Resolving redshifts (desi_max_sep={desi_max_sep:.1f}")')
+    n_lvd_sample_added = 0
     for i in range(n):
         sid     = int(beta['SGAID'][i])
         sga_ra  = float(beta['RA'][i])
@@ -1190,6 +1211,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         objname = _strval(beta['OBJNAME'][i])
         if objname in lvd_by_name:
             lrow = lvd_by_name[objname]
+            if not (beta['SAMPLE'][i] & SAMPLE_BITS['LVD']):
+                beta['SAMPLE'][i] |= SAMPLE_BITS['LVD']
+                n_lvd_sample_added += 1
             def _lvd_val(v):
                 if np.ma.is_masked(v):
                     return float('nan')
@@ -1643,6 +1667,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     emit()
     emit(f'  Z_LVD present (vlos_systemic): {n_z_lvd:>8,d}  ({pct(n_z_lvd):5.1f}%)')
     emit(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
+    emit(f'  SAMPLE LVD bit newly set (name match, not already flagged): '
+         f'{n_lvd_sample_added:>8,d}  ({pct(n_lvd_sample_added):5.1f}%)')
     emit()
     emit(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
     emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
