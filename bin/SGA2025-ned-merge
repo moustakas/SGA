@@ -128,7 +128,11 @@ single best individual measurement from a small set of high-precision
 "gold-tier" methods -- Cepheids, TRGB, PNLF, SBF, SNIa, SNII optical, GCLF,
 SNIa SDSS -- and reports it separately as NED_DIST_DIRECT /
 NED_DIST_DIRECT_UNC / NED_DIST_DIRECT_METHOD / NED_DIST_DIRECT_REF, without
-touching NED_DIST/NED_DIST_UNC at all. This list and priority order (highest
+touching NED_DIST/NED_DIST_UNC at all. NED_DIST_DIRECT_UNC is in Mpc (like
+NED_DIST_UNC), propagated from the underlying NED_DISTMOD_UNC (mag) via
+sigma_D = D * ln(10)/5 * sigma_mu -- NED's DistancesOfObject response has no
+native Mpc-scale uncertainty for individual measurements, only the
+magnitude-space one. This list and priority order (highest
 first) was derived empirically from the median reported NED_DISTMOD_UNC
 across the full sample, not hand-picked:
 
@@ -458,7 +462,12 @@ def resolve_distance_gold(measurements):
     present among `measurements`, then among that method's own rows picks
     the one with the lowest NED_DISTMOD_UNC (rows with no reported
     uncertainty sort last, tie-broken by the most recent reference year --
-    same idiom as _pick_best_measurement).
+    same idiom as _pick_best_measurement). The selection ranking stays in
+    magnitude space (the astronomically meaningful precision metric), but
+    the returned 'unc' is converted to Mpc via the standard distance-modulus
+    propagation (sigma_D = D * ln(10)/5 * sigma_mu) -- 'unc' as loaded from
+    NED_DISTMOD_UNC is a mag, not a distance, and DIST_IVAR downstream needs
+    a real Mpc-scale uncertainty.
     """
     gold = [m for m in measurements if m['method'] in DIST_GOLD_METHODS]
     if not gold:
@@ -477,8 +486,10 @@ def resolve_distance_gold(measurements):
         return (0 if has_unc else 1, m['unc'] if has_unc else 0., year)
 
     m = min(candidates, key=rank)
+    unc_mag = m['unc']
+    unc_mpc = (m['dist'] * np.log(10.) / 5. * unc_mag) if not np.isnan(unc_mag) else np.float64('nan')
     return {
-        'dist': m['dist'], 'unc': m['unc'],
+        'dist': m['dist'], 'unc': unc_mpc,
         'method': m['method'], 'reference': m['reference'],
     }
 
