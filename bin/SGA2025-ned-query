@@ -522,19 +522,27 @@ def load_fullsample_targets(ned_merged_path):
     confirmed to return zero RedshiftsOfObject/DistancesOfObject rows in
     that case (e.g. UGC 06451 / SGAID 5054374).
 
-    Also returns `fallback_targets`: dict[SGAID -> OBJNAME] for objects
-    where the byname query itself succeeded (NED_ERROR_BYNAME == ''). NED's
-    name resolution isn't always symmetric -- a winning CROSSIDS[0] target
-    can fail in RedshiftsOfObject/DistancesOfObject even though the
-    originally-submitted OBJNAME resolves fine for the same object (e.g.
-    'SDSS 587739302613680312' fails, 'SDSS J133845.98+323042.0' succeeds).
-    Used by run_multi as a per-object retry target when the primary lookup
-    comes back empty.
+    Also returns `fallback_targets`: dict[SGAID -> query target] for
+    objects where the byname query itself succeeded (NED_ERROR_BYNAME ==
+    ''). NED's name resolution isn't always symmetric -- a winning
+    CROSSIDS[0] target can fail in RedshiftsOfObject/DistancesOfObject even
+    though the originally-submitted byname target resolves fine for the
+    same object (e.g. 'SDSS 587739302613680312' fails, 'SDSS
+    J133845.98+323042.0' succeeds). Used by run_multi as a per-object retry
+    target when the primary lookup comes back empty.
+
+    The fallback value is OBJNAME passed through nedfriendly_lvd, matching
+    exactly what run_overview's byname mode actually submitted to NED --
+    not the raw OBJNAME column, which for LVD objects can differ from the
+    query target NED recognizes (e.g. 'KK 176' -> '[KK98] 176'). Using the
+    raw name here would occasionally coincide with CROSSIDS[0] itself,
+    silently defeating the fallback (SGAID 5054058).
     """
     tbl = Table(fitsio.read(ned_merged_path,
                 columns=['SGAID', 'CROSSIDS', 'NED_NAME', 'OBJNAME', 'NED_ERROR_BYNAME']))
-    targets  = {}
-    fallback = {}
+    targets       = {}
+    fallback_sids = []
+    fallback_objs = []
     for row in tbl:
         sid      = int(row['SGAID'])
         crossids = str(row['CROSSIDS']).strip()
@@ -544,7 +552,10 @@ def load_fullsample_targets(ned_merged_path):
         if str(row['NED_ERROR_BYNAME']) == '':
             objname = str(row['OBJNAME']).strip()
             if objname:
-                fallback[sid] = objname
+                fallback_sids.append(sid)
+                fallback_objs.append(objname)
+    fallback_names = nedfriendly_lvd(np.array(fallback_objs)) if fallback_objs else []
+    fallback = dict(zip(fallback_sids, fallback_names))
     return targets, fallback
 
 
