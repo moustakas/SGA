@@ -38,7 +38,11 @@ DISCARD_UNRESOLVED   Z_REF = NED and NED_FLAG has Z_UNRESOLVED set:
            SGA2025-ned-merge already tried and failed to find a confident
            replacement among NED's own redshift measurements. No
            alternative exists in the catalog; the only options are to
-           accept NED's best guess or discard it.
+           accept NED's best guess or discard it. A row can also qualify
+           for OVERRIDE (a NED-sourced Z can simultaneously disagree with
+           another catalog's measurement); OVERRIDE takes priority in that
+           case, since a concrete cross-catalog alternative is more
+           actionable than "no alternative exists".
 
 DISCARD_UNVERIFIED   Z_REF is DESI or SDSS, it is the only measurement for
            this object (no LVD/other DESI or SDSS/NED value to cross-check
@@ -65,6 +69,8 @@ Examples
   SGA2025-qa-redshifts --z-threshold 0.2 --sole-threshold 0.3 \\
       --write-candidates zqa-vi.csv
 """
+import os
+import sys
 import argparse
 
 import numpy as np
@@ -124,7 +130,14 @@ def main():
                              '(default: 5000)')
     parser.add_argument('--write-candidates', default=None,
                         help='Path to write the VI worksheet CSV')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite an existing --write-candidates file (otherwise '
+                             'refuses, to avoid clobbering completed VI work)')
     args = parser.parse_args()
+
+    if args.write_candidates and not args.overwrite and os.path.isfile(args.write_candidates):
+        log.error(f'Output exists (use --overwrite): {args.write_candidates}')
+        return 1
 
     sample, fullsample = read_sga_sample(version=args.version)
     t = sample if args.primary_only else fullsample
@@ -168,6 +181,18 @@ def main():
     discard_unverified = (hi & ~already_resolved & (n_valid == 1) &
                           np.isin(zref, ['DESI', 'SDSS']) & (z >= args.sole_threshold))
 
+    # OVERRIDE and DISCARD_UNRESOLVED test unrelated things (cross-catalog
+    # disagreement vs. NED's own internal alternate-resolution failure) and
+    # can both be true for the same NED-sourced row. OVERRIDE wins: a
+    # concrete cross-catalog alternative in the same row is more actionable
+    # than "no alternative exists".
+    overlap = override & discard_unresolved
+    if np.any(overlap):
+        log.info(f'{int(overlap.sum()):,d} objects satisfy both OVERRIDE and '
+                 f'DISCARD_UNRESOLVED; classifying as OVERRIDE (cross-catalog '
+                 f'alternative takes priority)')
+    discard_unresolved &= ~override
+
     action = np.full(len(t), '', dtype='U20')
     action[override]           = 'OVERRIDE'
     action[discard_unresolved] = 'DISCARD_UNRESOLVED'
@@ -201,7 +226,7 @@ def main():
     if args.write_candidates:
         if not np.any(flagged):
             log.info(f'  No candidates -- not writing {args.write_candidates}')
-            return
+            return 0
         idx = np.where(flagged)[0]
         out = t[CANDIDATE_COLS][idx]
         out.add_column(Column(action[idx], name='ACTION_HINT'), index=1)
@@ -209,9 +234,11 @@ def main():
             out[col] = np.full(len(out), '', dtype='U40')
         order = np.lexsort((-np.array(out['Z']), np.array(out['ACTION_HINT'])))
         out = out[order]
-        out.write(args.write_candidates, format='csv', overwrite=True)
+        out.write(args.write_candidates, format='csv', overwrite=args.overwrite)
         log.info(f'  Wrote {len(out):,d} VI candidates to {args.write_candidates}')
+
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

@@ -1814,7 +1814,7 @@ def main():
                              '(default: 1000)')
     parser.add_argument('--desi-max-sep', type=float, default=3.5,
                         help='Max separation between SGA center and DESI '
-                             'TARGET_RA/DEC in arcsec (default: 3)')
+                             'TARGET_RA/DEC in arcsec (default: 3.5)')
     parser.add_argument('--lvd-catalog',
                         help='Path to LVD ECSV catalog (e.g. lvd_comb_all_v1.1.0.ecsv); '
                              'distances in kpc converted to Mpc')
