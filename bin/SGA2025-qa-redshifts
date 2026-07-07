@@ -93,8 +93,9 @@ Z_FLAG_ALREADY_RESOLVED = (Z_FLAG_CONSENSUS_OVERRIDE | Z_FLAG_AUTO_NED_OVERRIDE 
 SOURCES = ['LVD', 'DESI', 'SDSS', 'NED']   # must match the Z_{SRC}/Z_IVAR_{SRC} columns
 
 CANDIDATE_COLS = [
-    'SGAID', 'GALAXY', 'REGION', 'Z', 'Z_REF', 'Z_FLAG', 'NED_FLAG',
-    'Z_LVD', 'Z_DESI', 'Z_SDSS', 'Z_NED', 'D26',
+    'SGAID', 'GALAXY', 'Z_FLAG', 'NED_FLAG', 'Z_REF', 'Z',
+    'Z_DESI', 'Z_SDSS', 'Z_NED', 'Z_LVD',
+    'Z_IVAR_DESI', 'Z_IVAR_SDSS', 'Z_IVAR_NED', 'Z_IVAR_LVD',
 ]
 VI_COLS = ['VI_STATUS', 'VI_Z', 'VI_Z_IVAR', 'VI_NOTES']
 

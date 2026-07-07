@@ -119,6 +119,40 @@ The override attempt itself is skipped gracefully when --redshifts-glob has
 no file for a region, but FLAG_Z_CENSORED_SDSS (reference-based, not
 dependent on the full measurement list) still applies.
 
+Direct distance override (optional --distances-glob input)
+------------------------------------------------------------
+NED's OverviewOfObject NED_DIST is a blended "mean" distance with no
+provenance. Where SGA2025-ned-query --querytype distances has queried the
+full DistancesOfObject measurement list for the SGAID, this picks out the
+single best individual measurement from a small set of high-precision
+"gold-tier" methods -- Cepheids, TRGB, PNLF, SBF, SNIa, SNII optical, GCLF,
+SNIa SDSS -- and reports it separately as NED_DIST_DIRECT /
+NED_DIST_DIRECT_UNC / NED_DIST_DIRECT_METHOD / NED_DIST_DIRECT_REF, without
+touching NED_DIST/NED_DIST_UNC at all. This list and priority order (highest
+first) was derived empirically from the median reported NED_DISTMOD_UNC
+across the full sample, not hand-picked:
+
+  Cepheids > TRGB > PNLF > SBF > SNIa > SNII optical > GCLF > SNIa SDSS
+
+(all <=0.27 mag median uncertainty, vs. >=0.40 mag for scaling-relation
+methods like Tully-Fisher/FP/D-Sigma/Faber-Jackson, which are deliberately
+excluded here -- NED's own blended mean is already a reasonable summary of
+those, and there's no single indirect method clearly worth preferring over
+it). Only ~2% of the population that currently falls back to NED_DIST has a
+gold-tier measurement at all, so most objects simply get blank/NaN
+NED_DIST_DIRECT* columns and are otherwise unaffected.
+
+For an SGAID with a gold-tier method present, the single measurement with
+the lowest NED_DISTMOD_UNC is adopted (rows with no reported uncertainty
+sort last, tie-broken by the most recent reference year -- the same idiom
+as the redshift override's _pick_best_measurement). This step only
+populates new columns; it does not change NED_DIST/NED_DIST_UNC or which
+DIST value SGA2025-build-catalog ultimately adopts.
+
+The override attempt is skipped gracefully when --distances-glob has no
+file for a region (existing NED_DIST/NED_DIST_UNC columns are unaffected
+either way).
+
 Outputs (written to --outdir)
 ------------------------------
   ned-merged-dr11-south.fits
@@ -132,6 +166,7 @@ Examples
 
   SGA2025-ned-merge --outdir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery
   SGA2025-ned-merge --outdir /path/to/nedquery --z-swap-threshold 0.4
+  SGA2025-ned-merge --outdir /path/to/nedquery --distances-glob ned-distances-{region}.csv
 
 """
 import os
@@ -163,6 +198,14 @@ FLAG_Z_CENSORED_SDSS   = 0x80   # NED_Z_REF is an SDSS-compilation bibcode -> di
 # references. Superseded by SGA2025-desi-dr1-match --sdss.
 SDSS_REF_RE = re.compile(r'^\d{4}SDSS')
 
+# High-precision direct distance methods, in priority order (index = rank).
+# Derived from the empirical median NED_DISTMOD_UNC across ned-distances-*.csv
+# (see the "Direct distance override" docstring section above); everything
+# else (Tully-Fisher, FP, D-Sigma, Faber-Jackson, etc., >=0.40 mag median
+# uncertainty) is deliberately excluded.
+DIST_GOLD_METHODS = ['Cepheids', 'TRGB', 'PNLF', 'SBF', 'SNIa',
+                      'SNII optical', 'GCLF', 'SNIa SDSS']
+
 # ---------------------------------------------------------------------------
 # Column type classification
 # ---------------------------------------------------------------------------
@@ -174,6 +217,7 @@ F32_COLS = frozenset([
     'NED_POS_UNC_SMA', 'NED_POS_UNC_SMI', 'NED_POS_UNC_PA',
     'NED_DIST', 'NED_DIST_UNC', 'NED_DIAM', 'NED_DIAM_KPC',
     'SEPARATION_ARCSEC', 'BYNAME_SEP_ARCSEC',
+    'NED_DIST_DIRECT', 'NED_DIST_DIRECT_UNC',
 ])
 
 # int32: integer fields (SGAID uses int64, handled separately)
@@ -199,6 +243,7 @@ OUT_COLS = (
      'NED_ERROR_BYNAME', 'NED_ERROR_BYPOS']
     + OVERVIEW_FIELDS
     + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT', 'NED_Z_TECHNIQUE', 'NED_Z_QUALITY']
+    + ['NED_DIST_DIRECT', 'NED_DIST_DIRECT_UNC', 'NED_DIST_DIRECT_METHOD', 'NED_DIST_DIRECT_REF']
 )
 
 
@@ -376,14 +421,77 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
     }
 
 
+def load_distance_alternates(path):
+    """Load a SGA2025-ned-query --querytype distances CSV.
+
+    Returns dict[int SGAID -> list of measurement dicts] built from
+    successful (ERROR == '') rows only, or {} if path is missing. Loads all
+    methods, not just DIST_GOLD_METHODS -- the gold-tier filter is applied
+    by resolve_distance_gold, not here.
+    """
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            if row.get('ERROR', ''):
+                continue
+            try:
+                sid  = int(row['SGAID'])
+                dist = float(row['NED_DIST'])
+            except (KeyError, ValueError):
+                continue
+            out.setdefault(sid, []).append({
+                'dist':      dist,
+                'unc':       _fval(row.get('NED_DISTMOD_UNC', ''), float),
+                'method':    row.get('NED_DIST_METHOD', '').strip(),
+                'reference': row.get('NED_DIST_REF', ''),
+            })
+    return out
+
+
+def resolve_distance_gold(measurements):
+    """Pick the single best gold-tier direct distance measurement for one
+    SGAID, or None if no DIST_GOLD_METHODS method is present.
+
+    Finds the highest-priority method (lowest DIST_GOLD_METHODS index)
+    present among `measurements`, then among that method's own rows picks
+    the one with the lowest NED_DISTMOD_UNC (rows with no reported
+    uncertainty sort last, tie-broken by the most recent reference year --
+    same idiom as _pick_best_measurement).
+    """
+    gold = [m for m in measurements if m['method'] in DIST_GOLD_METHODS]
+    if not gold:
+        return None
+
+    best_rank = min(DIST_GOLD_METHODS.index(m['method']) for m in gold)
+    best_method = DIST_GOLD_METHODS[best_rank]
+    candidates = [m for m in gold if m['method'] == best_method]
+
+    def rank(m):
+        has_unc = not np.isnan(m['unc'])
+        try:
+            year = -int(str(m['reference'])[:4])
+        except ValueError:
+            year = 0
+        return (0 if has_unc else 1, m['unc'] if has_unc else 0., year)
+
+    m = min(candidates, key=rank)
+    return {
+        'dist': m['dist'], 'unc': m['unc'],
+        'method': m['method'], 'reference': m['reference'],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Per-region merge
 # ---------------------------------------------------------------------------
-def merge_region(region, outdir, sep_threshold, redshifts_glob,
+def merge_region(region, outdir, sep_threshold, redshifts_glob, distances_glob,
                  z_swap_threshold, z_cluster_tol, z_match_tol):
     byname_path    = os.path.join(outdir, f'ned-byname-{region}.csv')
     bypos_path     = os.path.join(outdir, f'ned-bypos-{region}.csv')
     redshifts_path = os.path.join(outdir, redshifts_glob.format(region=region))
+    distances_path = os.path.join(outdir, distances_glob.format(region=region))
     outpath        = os.path.join(outdir, f'ned-merged-{region}.fits')
 
     log.info(f'Loading {region}')
@@ -398,6 +506,13 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     else:
         log.info(f'  redshift alternates: {redshifts_path} not found or empty, '
                  'skipping z-override logic')
+
+    distance_alts = load_distance_alternates(distances_path)
+    if distance_alts:
+        log.info(f'  distance alternates: {len(distance_alts):,d} SGAIDs from {distances_path}')
+    else:
+        log.info(f'  distance alternates: {distances_path} not found or empty, '
+                 'skipping direct-distance override')
 
     _, cat  = read_sga_sample(region=region)
     sga_id  = cat['SGAID'].value
@@ -594,6 +709,20 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
         cols['NED_Z_QUALITY'].append(str(quality))
         cols['NED_FLAG'][-1] = np.int32(flag)
 
+        # Direct (gold-tier) distance, if any -- see "Direct distance
+        # override" docstring section. Does not affect NED_DIST/NED_DIST_UNC.
+        gold = resolve_distance_gold(distance_alts.get(sid, []))
+        if gold is None:
+            cols['NED_DIST_DIRECT'].append(np.float32('nan'))
+            cols['NED_DIST_DIRECT_UNC'].append(np.float32('nan'))
+            cols['NED_DIST_DIRECT_METHOD'].append('')
+            cols['NED_DIST_DIRECT_REF'].append('')
+        else:
+            cols['NED_DIST_DIRECT'].append(np.float32(gold['dist']))
+            cols['NED_DIST_DIRECT_UNC'].append(np.float32(gold['unc']))
+            cols['NED_DIST_DIRECT_METHOD'].append(str(gold['method']))
+            cols['NED_DIST_DIRECT_REF'].append(str(gold['reference']))
+
     if missing_redshift_sgaids:
         log.warning(
             f'{region}: {len(missing_redshift_sgaids):,d} objects have a NED match '
@@ -665,6 +794,10 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     print(f'  NED_Z unset after resolution : {n_no_z:>8,d}  ({pct(n_no_z):5.1f}%)  '
           f'(includes censored objects with no non-censored alternate)')
     print()
+    n_dist_direct = int(np.sum(np.asarray(t['NED_DIST_DIRECT_METHOD']) != ''))
+    print(f'  NED_DIST_DIRECT (gold-tier) available : {n_dist_direct:>8,d}  '
+          f'({pct(n_dist_direct):5.1f}%)')
+    print()
     print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
     print(f'  Missing from bypos  CSV : {n_no_bypos:>8,d}')
 
@@ -688,6 +821,12 @@ def main():
                              'RedshiftsOfObject override data produced by SGA2025-ned-query '
                              '--querytype redshifts; {region} is substituted. Skipped '
                              'gracefully if not found (default: ned-redshifts-{region}.csv)')
+    parser.add_argument('--distances-glob', default='ned-distances-{region}.csv',
+                        help='Filename template (relative to --outdir) for the optional '
+                             'DistancesOfObject data produced by SGA2025-ned-query '
+                             '--querytype distances, used to populate NED_DIST_DIRECT; '
+                             '{region} is substituted. Skipped gracefully if not found '
+                             '(default: ned-distances-{region}.csv)')
     parser.add_argument('--z-swap-threshold', type=float, default=0.4,
                         help='Adopted NED_Z above this value triggers consideration of '
                              'alternative redshift measurements (default: 0.4)')
@@ -704,6 +843,7 @@ def main():
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
         merge_region(region, args.outdir, args.sep_threshold, args.redshifts_glob,
+                     args.distances_glob,
                      args.z_swap_threshold, args.z_cluster_tol, args.z_match_tol)
 
 
