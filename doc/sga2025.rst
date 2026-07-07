@@ -42,7 +42,7 @@ Data Access
 Naming Conventions
 ------------------
 
-Two layers of identifiers are used throughout the SGA-2025: **groups**
+We use two layers of identifiers throughout the SGA-2025: **groups**
 (mosaics containing one or more spatially/angularly associated
 galaxies) and **objects** (individual galaxies within each
 group). Most objects in the sample are in singleton groups.
@@ -50,7 +50,7 @@ group). Most objects in the sample are in singleton groups.
 Groups: ``GROUP_NAME`` and ``SGAGROUP``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Each SGA-2025 mosaic is processed as a *group* — a set of one or more
+We process each SGA-2025 mosaic as a *group* — a set of one or more
 galaxies whose angular sizes and separations place them within the
 same mosaic footprint. The mosaic is centered on the diameter-weighted
 centroid of its members.
@@ -85,24 +85,24 @@ Individual galaxies within a group are identified by:
   coordinate name at 0.001° (3.6 arcsec) precision, formed from the fitted
   galaxy coordinates ``RA`` and ``DEC``.
 - ``OBJNAME`` (str30) — the common name from the input parent catalog
-  (HyperLeda, NED, LVD, etc.).
+  (HyperLeda, NED, `LVD <https://local-volume-database.readthedocs.io/en/latest/index.html>`_, etc.).
 
 Galaxy Names: ``GALAXY`` and ``ALTNAMES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``GALAXY`` (str35) is the primary human-readable name assigned to each
 source. ``ALTNAMES`` (str200) holds up to three additional names,
-pipe-separated. Both are derived from NED's pipe-separated ``CROSSIDS``
+pipe-separated. We derive both from NED's pipe-separated ``CROSSIDS``
 cross-identification list through the following steps, applied in order:
 
 1. **HOST fix** — If the NED-primary name contains ``HOST`` (e.g.
-   ``SN 2003H HOST``), the first non-HOST entry in ``CROSSIDS`` is
-   promoted to position 0 and the original HOST name is appended at the
-   end (deduplicated case-insensitively).
+   ``SN 2003H HOST``), we promote the first non-HOST entry in ``CROSSIDS``
+   to position 0 and append the original HOST name at the end
+   (deduplicated case-insensitively).
 
-2. **Famous-name promotion** — The highest-priority well-known catalog
-   name anywhere in ``CROSSIDS`` is promoted to ``GALAXY``, regardless
-   of NED's own ordering. Priority order (highest first): Messier, NGC,
+2. **Famous-name promotion** — We promote the highest-priority well-known
+   catalog name anywhere in ``CROSSIDS`` to ``GALAXY``, regardless of
+   NED's own ordering. Priority order (highest first): Messier, NGC,
    IC, UGCA/UGC, ESO, ESO-LV, MCG, ARP, MRK, DDO, KDG, VCC, CGCG, PGC,
    PGC1, AGC, FCC, HCG, HIPASS. Names absent from this list (2MASX,
    SDSS, WISE, ICRF, etc.) remain as ``GALAXY`` only when no
@@ -111,24 +111,24 @@ cross-identification list through the following steps, applied in order:
 3. **Special-character fix** — If the promoted ``GALAXY`` name contains
    characters outside the safe set (letters, digits, space, ``+``, ``-``,
    ``.``, ``_``, ``:``) — a common pattern for NED names beginning with
-   ``[`` — the first ``ALTNAMES`` candidate that passes the safe-character
-   test is promoted to ``GALAXY`` instead and the original name is moved
+   ``[`` — we promote the first ``ALTNAMES`` candidate that passes the
+   safe-character test to ``GALAXY`` instead and move the original name
    into ``ALTNAMES``.
 
-4. **Prefix normalization** — Known catalog-name prefixes are fully
-   uppercased (e.g. ``Mrk`` → ``MRK``, ``Arp`` → ``ARP``, ``UGCa`` →
-   ``UGCA``). ``Messier`` is intentionally left in mixed case.
+4. **Prefix normalization** — We fully uppercase known catalog-name
+   prefixes (e.g. ``Mrk`` → ``MRK``, ``Arp`` → ``ARP``, ``UGCa`` →
+   ``UGCA``). We intentionally leave ``Messier`` in mixed case.
 
-5. **OBJNAME fallback** — If NED returned no match for the object,
-   ``GALAXY`` is set to ``OBJNAME`` from the parent catalog.
+5. **OBJNAME fallback** — If NED returned no match for the object, we set
+   ``GALAXY`` to ``OBJNAME`` from the parent catalog.
 
-6. **Hand-curated overrides** — A small dictionary of one-off corrections
-   (e.g. ``MESSIER 109`` → ``Messier 109``) is applied after all rules
+6. **Hand-curated overrides** — We apply a small dictionary of one-off
+   corrections (e.g. ``MESSIER 109`` → ``Messier 109``) after all rules
    above.
 
-``ALTNAMES`` is built from the remaining ``CROSSIDS`` entries (after the
-promoted ``GALAXY`` name is removed and case-insensitive duplicates are
-dropped), with prefix normalization applied; the field is blank when no
+We build ``ALTNAMES`` from the remaining ``CROSSIDS`` entries (after
+removing the promoted ``GALAXY`` name and dropping case-insensitive
+duplicates), applying prefix normalization; the field is blank when no
 alternatives remain.
 
 .. _imaging-regions:
@@ -177,17 +177,18 @@ The per-region merged catalogs combine all per-group ellipse
 photometry, `NASA/IPAC Extragalactic Database (NED)
 <https://ned.ipac.caltech.edu>`_ cross-matched results, spectroscopic
 redshifts from the `Dark Energy Spectroscopic Instrument Data Release
-1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1>`_ and SDSS
-DR17, and direct distances from the `Local Volume Database (LVD)
-<http://local-volume-database.readthedocs.io/en/latest>`_ into a
-single FITS file per imaging region.
+1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1/>`_ and
+`SDSS DR17 <https://www.sdss4.org/dr17/>`_, and direct distances from the
+`Local Volume Database (LVD)
+<https://local-volume-database.readthedocs.io/en/latest/index.html>`_ and
+NED into a single FITS file per imaging region.
 
 These catalogs are the starting point for most science use cases.
 
 Catalog Files
 ~~~~~~~~~~~~~
 
-Two versioned FITS files are provided, one per imaging region (see
+We provide two versioned FITS files, one per imaging region (see
 :ref:`data-access` for direct download links):
 
 .. code-block:: none
@@ -255,7 +256,7 @@ Common row selections:
 Data Model: SGA2025 Extension
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``SGA2025`` extension contains one row per galaxy. Columns are organized
+The ``SGA2025`` extension contains one row per galaxy. We organize columns
 into the groups below.
 
 **Identification and sky position**
@@ -357,7 +358,7 @@ into the groups below.
      - float32
      - Position angle from moments (deg, N through E)
 
-**Adopted redshift** (see :ref:`redshifts-distances` for resolution logic)
+**Adopted redshift** (see :ref:`redshifts` for resolution logic)
 
 .. list-table::
    :header-rows: 1
@@ -379,7 +380,7 @@ into the groups below.
      - int16
      - Redshift quality flag bitmask (see :ref:`bitmasks`)
 
-**Adopted distance** (see :ref:`redshifts-distances` for resolution logic)
+**Adopted distance** (see :ref:`distances` for resolution logic)
 
 .. list-table::
    :header-rows: 1
@@ -396,13 +397,18 @@ into the groups below.
      - Inverse variance of adopted distance (Mpc\ :sup:`−2`; 0 = no measurement
        or no formal uncertainty reported)
    * - ``DIST_REF``
-     - str4
-     - Source of adopted distance: ``LVD`` or ``NED``
+     - str10
+     - Source of adopted distance: ``NED_DIRECT``, ``LVD``, ``NED``, or ``ZCOSMO``
+   * - ``DIST_METHOD``
+     - str16
+     - Specific distance technique (e.g. ``TRGB``, ``SBF``, LVD's own reported
+       method, ``NED_MEAN``, or ``HUBBLE_FLOW``)
 
 **DESI DR1 spectroscopy**
 
-The columns below record the single best DESI spectrum selected for each
-galaxy (see :ref:`redshifts-distances`). Sentinel values: ``TARGETID_DESI``
+The columns below record the single best
+`DESI <https://data.desi.lbl.gov/doc/releases/dr1/>`_ spectrum selected for
+each galaxy (see :ref:`redshifts`). Sentinel values: ``TARGETID_DESI``
 and ``ZWARN_DESI`` are −1 when no spectrum was selected; ``Z_DESI`` and
 ``Z_IVAR_DESI`` are 0; ``DELTACHI2_DESI`` is −1; string columns are blank.
 
@@ -443,8 +449,9 @@ and ``ZWARN_DESI`` are −1 when no spectrum was selected; ``Z_DESI`` and
 
 **SDSS DR17 spectroscopy**
 
-The closest quality-filtered SDSS DR17 spectrum matched within 3.5 arcsec
-of the galaxy position (see :ref:`redshifts-distances`). Sentinels: ``Z_SDSS``
+The closest quality-filtered `SDSS DR17 <https://www.sdss4.org/dr17/>`_
+spectrum matched within 3.5 arcsec of the galaxy position (see
+:ref:`redshifts`). Sentinels: ``Z_SDSS``
 and ``Z_IVAR_SDSS`` are 0; string columns are blank.
 
 .. list-table::
@@ -494,6 +501,18 @@ and ``Z_IVAR_SDSS`` are 0; string columns are blank.
      - float32
      - Inverse variance of ``DIST_NED`` (Mpc\ :sup:`−2`; 0 if no NED distance
        or no formal uncertainty was reported)
+   * - ``DIST_NED_DIRECT``
+     - float32
+     - NED "gold-tier" direct distance, from a single high-precision
+       literature measurement (Mpc; 0 = none available)
+   * - ``DIST_IVAR_NED_DIRECT``
+     - float32
+     - Inverse variance of ``DIST_NED_DIRECT`` (Mpc\ :sup:`−2`; 0 if no
+       uncertainty was reported)
+   * - ``DIST_NED_DIRECT_METHOD``
+     - str16
+     - Distance technique used for ``DIST_NED_DIRECT`` (e.g. ``TRGB``, ``SBF``,
+       ``Cepheids``)
    * - ``NED_FLAG``
      - int32
      - NED cross-match quality flag (see :ref:`bitmasks`)
@@ -526,7 +545,7 @@ These columns are populated only for objects in the Local Volume Database
      - Inverse variance of ``DIST_LVD`` (Mpc\ :sup:`−2`; 0 if no LVD distance
        uncertainty)
 
-**Peculiar-velocity-corrected redshift** (see :ref:`redshifts-distances` for details)
+**Peculiar-velocity-corrected redshift** (see :ref:`redshifts` for details)
 
 .. list-table::
    :header-rows: 1
@@ -689,15 +708,15 @@ Tractor source-fitting parameters for each SGA galaxy and all sources
 detected within its ellipse. See the `Legacy Surveys documentation
 <https://www.legacysurvey.org/>`_ for the full Tractor data model.
 
-.. _redshifts-distances:
+.. _redshifts:
 
-Redshifts and Distances
-~~~~~~~~~~~~~~~~~~~~~~~~
+Redshifts
+~~~~~~~~~
 
 The merged catalogs cross-match four independent redshift sources —
-**DESI DR1**, **SDSS DR17**, **NED**, and the **Local Volume Database
-(LVD)** — and one additional distance source (NED) for galaxies without
-LVD distances.
+`DESI DR1 <https://data.desi.lbl.gov/doc/releases/dr1/>`_,
+`SDSS DR17 <https://www.sdss4.org/dr17/>`_, **NED**, and the
+`Local Volume Database (LVD) <https://local-volume-database.readthedocs.io/en/latest/index.html>`_.
 
 **Adopted redshift (Z, Z_IVAR, Z_REF)**
 
@@ -717,7 +736,7 @@ Priority order **LVD > DESI > SDSS > NED**:
 
 **DESI DR1 spectrum selection**
 
-Applied to all spectra within 3.5 arcsec of the SGA position:
+We apply this to all spectra within 3.5 arcsec of the SGA position:
 
 1. Keep only ``ZCAT_PRIMARY = True``.
 2. Drop ``SPECTYPE = STAR``, and any ``GALAXY``/``QSO`` spectrum with ``Z > 1.0``.
@@ -729,19 +748,19 @@ spectra within the ellipse regardless of selection outcome.
 
 **SDSS DR17 spectrum selection**
 
-A single fixed-radius (3.5 arcsec) positional match against SDSS DR17
-``specObj``, pre-filtered to ``SPECPRIMARY = 1``, ``CLASS`` in
-(``GALAXY``, ``QSO``), and clean redshift warnings (``ZWARNING_NOQSO = 0``
-for QSOs, ``ZWARNING = 0`` for galaxies). ``Z > 1.0`` is dropped as
-physically implausible for this sample (mirrors the DESI cut above), and
-the closest remaining match is kept when more than one falls within the
-radius. This match is independent of NED's own SDSS-derived redshifts (see
-``NED_FLAG`` below) and takes priority over them, since NED does not
-propagate SDSS's own quality flags.
+We match against SDSS DR17 ``specObj`` using a single fixed-radius
+(3.5 arcsec) positional search, pre-filtered to ``SPECPRIMARY = 1``,
+``CLASS`` in (``GALAXY``, ``QSO``), and clean redshift warnings
+(``ZWARNING_NOQSO = 0`` for QSOs, ``ZWARNING = 0`` for galaxies). We drop
+``Z > 1.0`` as physically implausible for this sample (mirroring the DESI
+cut above), and keep the closest remaining match when more than one falls
+within the radius. This match is independent of NED's own SDSS-derived
+redshifts (see ``NED_FLAG`` below) and takes priority over them, since NED
+does not propagate SDSS's own quality flags.
 
 **NED redshift resolution**
 
-NED's aggregated ("fiducial") ``Z_NED`` is replaced by a value drawn from
+We replace NED's aggregated ("fiducial") ``Z_NED`` with a value drawn from
 NED's full redshift-measurement list for the object when it:
 
 - exceeds a threshold (0.4 by default),
@@ -750,45 +769,36 @@ NED's full redshift-measurement list for the object when it:
   photometric-redshift catalog, or an SDSS-compilation reference (superseded
   by the direct SDSS DR17 match above).
 
-Candidate measurements are grouped into clusters of mutually agreeing
-values; if one cluster dominates, its highest-quality measurement is
-adopted. Otherwise, or if no candidates exist, the result is flagged rather
-than silently trusted (see ``NED_FLAG`` / ``Z_FLAG`` in :ref:`bitmasks`).
+We group candidate measurements into clusters of mutually agreeing
+values; if one cluster dominates, we adopt its highest-quality measurement.
+Otherwise, or if no candidates exist, we flag the result rather
+than silently trust it (see ``NED_FLAG`` / ``Z_FLAG`` in :ref:`bitmasks`).
 
 **Consensus override**
 
 DESI always wins normal priority when measured, so it is the only source
 that can end up adopted despite being the outlier: when DESI, SDSS, and NED
-are all measured and SDSS/NED agree with each other but not with DESI, the
-adopted redshift is replaced by SDSS's and flagged ``CONSENSUS_OVERRIDE``
+are all measured and SDSS/NED agree with each other but not with DESI, we
+replace the adopted redshift with SDSS's and flag it ``CONSENSUS_OVERRIDE``
 (see :ref:`bitmasks`).
 
 **Automatic NED override**
 
-This sample is overwhelmingly z < 0.3, so an adopted DESI/SDSS redshift
-above 0.3 with an independent NED measurement on file is treated as a fiber
-landing on a background source: the adopted redshift is replaced by NED's
-and flagged ``AUTO_NED_OVERRIDE`` (see :ref:`bitmasks`).
+This sample is overwhelmingly z < 0.3, so we treat an adopted DESI/SDSS
+redshift above 0.3 with an independent NED measurement on file as a fiber
+landing on a background source: we replace the adopted redshift with NED's
+and flag it ``AUTO_NED_OVERRIDE`` (see :ref:`bitmasks`).
 
 **Manual VI overrides**
 
-A small residual of flagged redshifts (see ``Z_FLAG`` in :ref:`bitmasks`)
-are resolved by hand and fed back in as a worksheet CSV keyed by ``SGAID``,
-overriding or discarding the adopted redshift and setting ``VI_REVIEWED``.
-
-**Adopted distance (DIST, DIST_IVAR, DIST_REF)**
-
-Priority order **LVD > NED**:
-
-1. ``DIST_REF = LVD`` when ``DIST_LVD > 0``.
-2. ``DIST_REF = NED`` when ``DIST_NED > 0``.
-
-LVD distances are converted from kpc to Mpc. ``DIST_IVAR = 0`` may mean no
-distance is available, or that no formal uncertainty was reported.
+We resolve a small residual of flagged redshifts (see ``Z_FLAG`` in
+:ref:`bitmasks`) by hand and feed them back in as a worksheet CSV keyed by
+``SGAID``, overriding or discarding the adopted redshift and setting
+``VI_REVIEWED``.
 
 **Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
 
-For every galaxy with ``Z_IVAR > 0``, the heliocentric ``Z`` is converted to
+For every galaxy with ``Z_IVAR > 0``, we convert the heliocentric ``Z`` to
 the CMB frame using the standard dipole
 (`Planck 2018 <https://www.aanda.org/articles/aa/full_html/2020/09/aa33910-18/aa33910-18.html>`_:
 369.82 km/s toward RA = 167.942°, Dec = −6.944°, J2000).
@@ -800,6 +810,75 @@ CMB-frame redshift with their mean peculiar velocity removed, and
 ``Z_COSMO_IVAR`` combines the model-to-model scatter with the measurement
 uncertainty in quadrature. Beyond 20,000 km/s, ``Z_COSMO`` is simply the
 CMB-frame redshift and ``Z_COSMO_IVAR`` carries over ``Z_IVAR`` unchanged.
+
+.. _distances:
+
+Distances
+~~~~~~~~~
+
+We assign distances from four sources, in priority order:
+high-precision "gold-tier" measurements compiled by NED, the
+`Local Volume Database (LVD) <https://local-volume-database.readthedocs.io/en/latest/index.html>`_,
+NED's own blended "mean" distance, and — for every remaining galaxy with a
+measured redshift — a Hubble-flow distance derived from ``Z_COSMO``.
+
+**Adopted distance (DIST, DIST_IVAR, DIST_REF, DIST_METHOD)**
+
+Priority order **NED direct > LVD > NED mean > Hubble flow**:
+
+1. ``DIST_REF = NED_DIRECT`` when a high-precision "gold-tier" NED distance
+   is available (Cepheids, TRGB, PNLF, SBF, SNIa, SNII, GCLF, or SNIa-SDSS
+   -- as opposed to Tully-Fisher, Fundamental Plane, and other
+   lower-precision scaling relations). If the best available gold-tier
+   method rests on a single, unreplicated reference and conflicts with a
+   more consistent measurement from another gold-tier method, we adopt the
+   latter instead.
+2. ``DIST_REF = LVD`` when ``DIST_LVD > 0`` (converted from kpc to Mpc).
+3. ``DIST_REF = NED`` when ``DIST_NED > 0`` (NED's blended "mean" distance).
+4. ``DIST_REF = ZCOSMO`` for every remaining galaxy with a measured
+   redshift: a Hubble-flow distance, ``DIST = c`` × ``Z_COSMO`` / 70 km/s/Mpc.
+
+``DIST_METHOD`` records the specific technique behind the adopted value.
+For any adopted distance with no reported uncertainty (common for LVD), we
+assign a 15% fractional floor rather than ``DIST_IVAR = 0``.
+
+.. note::
+
+   Gold-tier method abbreviations, in priority order, with their typical
+   distance-modulus uncertainty (mag) inferred from the literature values
+   compiled in NED:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 20 55 25
+
+      * - Method
+        - Full name
+        - Typical uncertainty
+      * - ``Cepheids``
+        - Cepheid variable stars
+        - 0.08 mag
+      * - ``TRGB``
+        - Tip of the Red Giant Branch
+        - 0.10 mag
+      * - ``PNLF``
+        - Planetary Nebula Luminosity Function
+        - 0.13 mag
+      * - ``SBF``
+        - Surface Brightness Fluctuations
+        - 0.15 mag
+      * - ``SNIa``
+        - Type Ia supernovae
+        - 0.16 mag
+      * - ``SNII``
+        - Type II supernovae (optical)
+        - 0.16 mag
+      * - ``GCLF``
+        - Globular Cluster Luminosity Function
+        - 0.17 mag
+      * - ``SNIa SDSS``
+        - Type Ia supernovae, SDSS-II Supernova Survey
+        - 0.26 mag
 
 **Sentinel conventions**
 
@@ -828,8 +907,8 @@ Bitmasks
 ``SAMPLE``
 ~~~~~~~~~~
 
-Set in the parent catalog and propagated to the merged catalogs. A source may
-have multiple bits set simultaneously.
+We set ``SAMPLE`` in the parent catalog and propagate it to the merged
+catalogs. We may set multiple bits on a source simultaneously.
 
 .. list-table::
    :header-rows: 1
@@ -860,7 +939,7 @@ have multiple bits set simultaneously.
 ``ELLIPSEMODE`` — input fitting flags
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Requested before processing; describes the intended fitting strategy.
+We request this before processing; it describes the intended fitting strategy.
 
 .. list-table::
    :header-rows: 1
@@ -900,7 +979,7 @@ Requested before processing; describes the intended fitting strategy.
 ``ELLIPSEBIT`` — output fitting and quality flags
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Set after processing; records the actual fitting outcome and data quality.
+We set this after processing; it records the actual fitting outcome and data quality.
 
 .. list-table::
    :header-rows: 1
@@ -961,9 +1040,9 @@ Set after processing; records the actual fitting outcome and data quality.
 ``NED_FLAG`` — NED cross-match quality
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Records how the NED cross-match was resolved for each galaxy. The byname
+Records how we resolved the NED cross-match for each galaxy. The byname
 query searches NED by galaxy name; the bypos query searches by sky position.
-Multiple bits may be set simultaneously.
+We may set multiple bits simultaneously.
 
 .. list-table::
    :header-rows: 1
@@ -1002,13 +1081,14 @@ Multiple bits may be set simultaneously.
    * - ``Z_CENSORED_SDSS``
      - 128
      - Adopted default came from an SDSS-compilation reference; discarded
-       in favor of the direct SDSS DR17 match (see :ref:`redshifts-distances`)
+       in favor of the direct SDSS DR17 match (see :ref:`redshifts`)
 
 .. note::
 
-   LVD galaxies are exempt from the ``LARGE_SEP`` flag: their NED coordinates
-   can legitimately differ from the SGA centroid (extended dwarfs), so a
-   successful byname match is always accepted regardless of positional offset.
+   `LVD <https://local-volume-database.readthedocs.io/en/latest/index.html>`_
+   galaxies are exempt from the ``LARGE_SEP`` flag: their NED coordinates
+   can legitimately differ from the SGA centroid (extended dwarfs), so we
+   always accept a successful byname match regardless of positional offset.
 
 ``Z_FLAG`` — redshift quality
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1043,21 +1123,21 @@ Multiple bits may be set simultaneously.
        redshift, so the adopted value came from NED's full redshift list
    * - ``CONSENSUS_OVERRIDE``
      - 16
-     - DESI disagreed with SDSS and NED, which agreed with each other;
-       the adopted redshift was replaced by SDSS's
+     - DESI disagreed with SDSS and NED, which agreed with each other; we
+       replaced the adopted redshift with SDSS's
    * - ``AUTO_NED_OVERRIDE``
      - 32
-     - Adopted DESI/SDSS redshift exceeded 0.3 and was automatically
-       replaced by an independent NED measurement
+     - Adopted DESI/SDSS redshift exceeded 0.3, so we automatically
+       replaced it with an independent NED measurement
    * - ``VI_REVIEWED``
      - 64
-     - Adopted redshift was set or confirmed by a manual visual-inspection
-       pass; the final, human-authoritative bit
+     - A manual visual-inspection pass set or confirmed the adopted
+       redshift; the final, human-authoritative bit
 
 ``OPTMASKBITS``, ``GALEXMASKBITS``, ``UNWISEMASKBITS``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-band imaging mask bits stored in the per-group ``-maskbits.fits[.fz]``
+We store per-band imaging mask bits in the per-group ``-maskbits.fits[.fz]``
 files and the per-galaxy ``-ellipse-{dataset}.fits`` files. All three share
 the same low-order bits:
 
@@ -1095,7 +1175,7 @@ Per-Group Data Files
 Directory Layout
 ~~~~~~~~~~~~~~~~
 
-The public data release is organized as:
+We organize the public data release as:
 
 .. code-block:: none
 
@@ -1127,12 +1207,12 @@ To construct the path to a group directory in Python:
 File Inventory
 ~~~~~~~~~~~~~~
 
-All files in a group directory are prefixed by ``g = SGA2025_{group_name}``.
+We prefix all files in a group directory with ``g = SGA2025_{group_name}``.
 
-Two processing modes exist. **Full mode** applies to groups where Tractor
-source fitting was performed (the file ``{g}-tractor.fits`` is present).
-**Coadds-only mode** applies to groups where only image mosaics were
-produced (no Tractor fitting).
+Two processing modes exist. **Full mode** applies to groups where we
+performed Tractor source fitting (the file ``{g}-tractor.fits`` is present).
+**Coadds-only mode** applies to groups where we produced only image mosaics
+(no Tractor fitting).
 
 *Files present in both modes:*
 
@@ -1243,7 +1323,7 @@ Each file contains four FITS extensions:
 Release History
 ---------------
 
-v1.0 (2025)
-~~~~~~~~~~~
+v1.0 (August 2026)
+~~~~~~~~~~~~~~~~~~
 
 First public release.
