@@ -14,7 +14,7 @@ from astropy.table import Table, vstack, join
 from pathlib import Path
 from glob import glob
 import multiprocessing
-from SGA.SGA import SAMPLE, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN, APERTURES
+from SGA.SGA import SAMPLE, Z_FLAG, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN, APERTURES
 from SGA.ellipse import FITMODE, ELLIPSEMODE, ELLIPSEBIT, REF_APERTURES
 
 from SGA.logger import log
@@ -25,6 +25,12 @@ from astropy.utils.exceptions import AstropyDeprecationWarning
 # At the top of ellipse_cog function, add:
 warnings.filterwarnings('ignore', category=AstropyDeprecationWarning,
                        message=".*Passing 'theta' positionally.*")
+
+# Base URL for the hosted SGA-2025 data-model documentation; per-group pages
+# link to specific anchors on this page to explain flag/reference abbreviations
+# without repeating a full glossary on every one of ~470,000 pages.
+SGA_DOCS_URL = "https://sga.readthedocs.io/en/latest/sga2025.html"
+LEGACYPIPE_BITMASKS_URL = "https://www.legacysurvey.org/dr11/bitmasks/"
 
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
@@ -2305,27 +2311,39 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
 
         # --- Redshift & Distance (only when Z present) -----------------------
         if _has('Z'):
-            has_desi = _has('Z_DESI')
-            has_ned  = _has('Z_NED')
-            has_lvd  = _has('Z_LVD')
+            has_photz = _has('Z_PHOT')
+            has_desi  = _has('Z_DESI')
+            has_sdss  = _has('Z_SDSS')
+            has_ned   = _has('Z_NED')
+            has_lvd   = _has('Z_LVD')
             html_lines.append("    <h2 id='sec-redshift'>Redshift &amp; Distance</h2>")
             html_lines.append("    <table>")
-            hdr1 = [('Galaxy', 1, 3), ('Adopted', 4)]
+            hdr1 = [('Galaxy', 1, 3), ('Adopted', 5)]
+            if has_photz:
+                hdr1.append(('Photo-z', 1))
             if has_desi:
                 hdr1.append(('DESI', 4))
+            if has_sdss:
+                hdr1.append(('SDSS', 2))
             if has_ned:
-                hdr1.append(('NED', 2))
+                hdr1.append(('NED', 4))
             if has_lvd:
                 hdr1.append(('LVD', 2))
             html_lines.append(_th(*hdr1))
-            hdr2 = ['', '', 'Distance', '']
-            hdr3 = ['Redshift', 'Ref', '(Mpc)', 'Ref']
+            hdr2 = ['', '', 'Distance', '', '']
+            hdr3 = ['Redshift', 'Ref', '(Mpc)', 'Ref', 'Method']
+            if has_photz:
+                hdr2 += ['']
+                hdr3 += ['Redshift']
             if has_desi:
                 hdr2 += ['', '', '', '']
                 hdr3 += ['Redshift', 'ZWARN', 'SPECTYPE', 'N Spectra']
+            if has_sdss:
+                hdr2 += ['', '']
+                hdr3 += ['Redshift', 'CLASS']
             if has_ned:
-                hdr2 += ['', 'Distance']
-                hdr3 += ['Redshift', '(Mpc)']
+                hdr2 += ['', 'Mean Dist.', 'Direct Dist.', '']
+                hdr3 += ['Redshift', '(Mpc)', '(Mpc)', 'Method']
             if has_lvd:
                 hdr2 += ['', 'Distance']
                 hdr3 += ['Redshift', '(Mpc)']
@@ -2333,8 +2351,16 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append(_th(*hdr3))
             for row in fullgroup_data:
                 z_flag = int(_get(row, 'Z_FLAG', 0) or 0)
-                z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
-                z_ref = str(_get(row, 'Z_REF', '') or '').strip()
+                if z_flag:
+                    _flag_names = decode_bitmask(z_flag, Z_FLAG)
+                    _is_bad = bool(z_flag & Z_FLAG['DISCREPANCY'])
+                    _icon = '⚠' if _is_bad else 'ⓘ'
+                    _cls  = 'warn' if _is_bad else 'muted'
+                    z_flag_s = f" <span class='{_cls}' title='{', '.join(_flag_names)}'>{_icon}</span>"
+                else:
+                    z_flag_s = ''
+                z_ref       = str(_get(row, 'Z_REF', '') or '').strip()
+                dist_method = str(_get(row, 'DIST_METHOD', '') or '').strip()
                 _gname_z = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
                 _sgaid_z = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
                 cells = [
@@ -2343,7 +2369,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     z_ref,
                     _fmt_dist(row, 'DIST', 'DIST_IVAR'),
                     str(_get(row, 'DIST_REF', '') or '').strip(),
+                    dist_method,
                 ]
+                if has_photz:
+                    cells += [_fmt_z(row, 'Z_PHOT', 'Z_PHOT_IVAR')]
                 if has_desi:
                     z_desi_s = _fmt_z(row, 'Z_DESI', 'Z_IVAR_DESI')
                     zwarn_raw = _get(row, 'ZWARN_DESI')
@@ -2357,10 +2386,15 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     else:
                         zwarn_s = f"<span class='warn'>{zwarn}</span>"
                     cells += [z_desi_s, zwarn_s, spectype, nspec if nspec else '']
+                if has_sdss:
+                    class_sdss = str(_get(row, 'CLASS_SDSS', '') or '').strip()
+                    cells += [_fmt_z(row, 'Z_SDSS', 'Z_IVAR_SDSS'), class_sdss]
                 if has_ned:
                     cells += [
                         _fmt_z(row, 'Z_NED', 'Z_IVAR_NED'),
                         _fmt_dist(row, 'DIST_NED', 'DIST_IVAR_NED'),
+                        _fmt_dist(row, 'DIST_NED_DIRECT', 'DIST_IVAR_NED_DIRECT'),
+                        str(_get(row, 'DIST_NED_DIRECT_METHOD', '') or '').strip(),
                     ]
                 if has_lvd:
                     cells += [
@@ -2369,6 +2403,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     ]
                 html_lines.append(_td(*cells))
             html_lines.append("    </table>")
+            html_lines.append(
+                "    <p class='muted'>Reference abbreviations (<code>Z_REF</code>/<code>DIST_REF</code>/"
+                "<code>DIST_METHOD</code>) and the redshift-quality flag (hover the ⚠/ⓘ icon) are defined in the "
+                f"<a href='{SGA_DOCS_URL}#redshifts' target='_blank'>Redshifts</a> and "
+                f"<a href='{SGA_DOCS_URL}#distances' target='_blank'>Distances</a> sections of the data-model "
+                "documentation.</p>"
+            )
 
     # Multiwavelength Montage image (full-width)
     html_lines.append("    <h2 id='sec-montage'>Multiwavelength Montage</h2>")
@@ -2432,6 +2473,12 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                                       d_init_s, ba_init_s, pa_init_s, init_ref,
                                       sample_flags, ebit_flags, emode_flags))
         html_lines.append("    </table>")
+        html_lines.append(
+            "    <p class='muted'><code>SAMPLE</code>, <code>ELLIPSEBIT</code>, and <code>ELLIPSEMODE</code> "
+            "flag names are defined in the "
+            f"<a href='{SGA_DOCS_URL}#bitmasks' target='_blank'>Bitmasks</a> section of the data-model "
+            "documentation.</p>"
+        )
 
     # ellipse mask image (full-width)
     filepath = group_dir / group_files[1]
@@ -2522,6 +2569,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 mb_s, fb_s,
             ))
         html_lines.append("    </table>")
+        html_lines.append(
+            "    <p class='muted'><code>MASKBITS</code>/<code>FITBITS</code> are Legacy Survey Tractor flags, "
+            f"defined in the Legacy Survey's own <a href='{LEGACYPIPE_BITMASKS_URL}' target='_blank'>bitmasks "
+            "reference</a>.</p>"
+        )
 
     # ---- Section D: Photometry — full width ---------------------------------
     if len(fullgroup_data) > 0:
