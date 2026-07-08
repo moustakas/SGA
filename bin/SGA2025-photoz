@@ -95,7 +95,10 @@ def main():
     _, sample = read_sga_sample()
     log.info(f'Read {len(sample):,d} objects (all group members).')
 
-    X, feature_names, row_mask = build_features(sample)
+    log.info('Reading the row-matched TRACTOR table (for SERSIC)...')
+    _, tractor = read_sga_sample(tractor=True)
+
+    X, feature_names, row_mask = build_features(sample, tractor=tractor)
     log.info('Features: {}'.format(', '.join(feature_names)))
     nbad = np.count_nonzero(~row_mask)
     if nbad > 0:

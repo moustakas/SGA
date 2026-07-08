@@ -16,8 +16,9 @@ Typical workflow (see ``bin/SGA2025-photoz`` for the full pipeline):
                             outlier_fraction)
 
     _, sample = read_sga_sample()  # all group members, not just GROUP_PRIMARY
+    _, tractor = read_sga_sample(tractor=True)  # row-matched to sample
 
-    X, feature_names, row_mask = build_features(sample)
+    X, feature_names, row_mask = build_features(sample, tractor=tractor)
     train_mask = select_spec_subsample(sample) & row_mask
 
     z_spec = sample['Z'][train_mask]
@@ -54,6 +55,14 @@ BRIGHTNESS_BANDS = ['R', 'I', 'G']
 
 MAG_MAX = 30.   # magnitudes fainter than this are treated as non-detections
 MAG_FILL = 30.  # fill value substituted for non-detections/bad flux
+
+# Tractor TYPE values for which SERSIC is not a meaningful concentration
+# index: PSF (point source, no profile fit) and '' (no Tractor match at
+# all). EXP/REX/DEV are kept as informative -- their SERSIC is a fixed
+# Tractor convention (1.0/1.0/4.0), not a real fit, but it's still a
+# legitimate coarse profile-shape value, unlike PSF's SERSIC=0.
+SERSIC_MISSING_TYPES = ('PSF', '')
+SERSIC_FILL = -1.  # fill value substituted for SERSIC_MISSING_TYPES
 
 # Z_FLAG bits that mark an adopted redshift as untrustworthy for training:
 # any cross-source disagreement, or a sole NED redshift that NED itself
@@ -118,8 +127,9 @@ def _censor_north_z(sample, flux_z):
     return flux_z
 
 
-def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BANDS,
-                   mag_max=MAG_MAX, censor_north_z=True):
+def build_features(sample, tractor=None, bands=FEATURE_BANDS,
+                   brightness_bands=BRIGHTNESS_BANDS, mag_max=MAG_MAX,
+                   censor_north_z=True):
     """Assemble the random-forest feature matrix from the base SGA2025
     columns (``FLUX_{band}``, ``MW_TRANSMISSION_{band}``, ``D26``, ``BA``)
     -- no ``ELLIPSEPHOT`` join needed.
@@ -130,6 +140,11 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
         Table with ``FLUX_{band}`` and ``MW_TRANSMISSION_{band}`` for each
         of ``bands``, plus ``REGION``, ``D26``, ``BA`` (e.g. from
         :func:`SGA.SGA.read_sga_sample`).
+    tractor : :class:`~astropy.table.Table`, optional
+        Row-matched TRACTOR table (e.g. from
+        ``SGA.SGA.read_sga_sample(tractor=True)``), used to add a
+        ``SERSIC`` feature. If None (default), no ``SERSIC``/
+        ``detected_sersic`` features are added.
     bands : :class:`list` of :class:`str`
         Bands to form consecutive colors from (default NUV,g,r,i,z,W1,W2).
     brightness_bands : :class:`list` of :class:`str`
@@ -145,8 +160,9 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     -------
     X : :class:`~numpy.ndarray`, shape (nobj, nfeat)
         Feature matrix: consecutive colors, a fallback brightness
-        magnitude, ``D26``, ``BA``, a surface-brightness proxy, and one
-        detected/not-detected flag per band. All fluxes/magnitudes are
+        magnitude, ``D26``, ``BA``, a surface-brightness proxy, a
+        detected/not-detected flag per band, and (when ``tractor`` is
+        given) ``SERSIC``/``detected_sersic``. All fluxes/magnitudes are
         Milky Way extinction-corrected via ``MW_TRANSMISSION_{band}``;
         there is no separate ``EBV`` feature, since the dereddened
         photometry already absorbs its effect.
@@ -167,6 +183,16 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     group members): every single row now gets a usable feature vector --
     ``row_mask`` is only ever False for ``D26<=0``/``BA<=0``, which does
     not occur in practice.
+
+    ``SERSIC`` (Tractor Sersic index) uses the same sentinel+flag pattern:
+    it's a real fit for ``TYPE='SER'`` and a fixed-but-informative Tractor
+    convention for ``EXP``/``REX``/``DEV`` (1.0/1.0/4.0), so all four are
+    kept as-is; only ``PSF`` (point source, no profile) and unmatched rows
+    (``TYPE=''``) get :data:`SERSIC_FILL` and ``detected_sersic=0``.
+    Checked against the SGA2025-v1.0 sample: only 155/470,625 objects
+    (0.03%) fall in that missing bucket, and adding SERSIC improves 5-fold
+    CV NMAD from 0.01091 to 0.01053 (outlier fraction 0.12%->0.11%), with
+    SERSIC ranking 7th of 19 by feature importance.
 
     """
     flux = {b: np.asarray(sample[f'FLUX_{b}'], dtype=np.float64) for b in bands}
@@ -212,7 +238,18 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     detected_arrs = [detected[b].astype(np.float64) for b in bands]
 
     feature_names = (color_names + ['mag', 'D26', 'BA', 'SB'] + detected_names)
-    X = np.column_stack(colors + [brightness_mag, d26, ba, sb] + detected_arrs)
+    feature_arrs = colors + [brightness_mag, d26, ba, sb] + detected_arrs
+
+    if tractor is not None:
+        typ = np.array([t.strip() for t in np.asarray(tractor['TYPE']).astype(str)])
+        sersic_missing = np.isin(typ, SERSIC_MISSING_TYPES)
+        sersic = np.where(sersic_missing, SERSIC_FILL,
+                          np.asarray(tractor['SERSIC'], dtype=np.float64))
+        detected_sersic = (~sersic_missing).astype(np.float64)
+        feature_names += ['SERSIC', 'detected_sersic']
+        feature_arrs += [sersic, detected_sersic]
+
+    X = np.column_stack(feature_arrs)
 
     row_mask = np.all(np.isfinite(X), axis=1) & (d26 > 0) & (ba > 0)
 

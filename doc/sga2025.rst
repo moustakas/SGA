@@ -892,19 +892,27 @@ We resolve a small residual of flagged redshifts (see ``Z_FLAG`` in
 
 **Photometric redshift (Z_PHOT, Z_PHOT_IVAR)**
 
-We train a
-`scikit-learn RandomForestRegressor <https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html>`_
-on the subsample of galaxies with an adopted spectroscopic redshift, using
-Milky Way extinction-corrected optical/infrared colors, an apparent
-magnitude, surface brightness, isophotal diameter, and axis ratio as
-features. Fluxes are dereddened using the catalog's ``MW_TRANSMISSION_*``
-values before colors and magnitudes are formed, so there is no separate
-Galactic-extinction feature. Apparent magnitude and surface brightness use
-the *r* band, falling back to *i* and then *g* when *r* is unavailable. We
-validate the model with 5-fold cross-validation, then retrain it on the
-full spectroscopic subsample and predict ``Z_PHOT`` for every galaxy in
-the catalog. ``Z_PHOT_IVAR`` is the inverse variance of the spread of
-predictions across the individual trees of the forest.
+We train a `scikit-learn RandomForestRegressor
+<https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html>`_
+on the subsample of galaxies with an adopted spectroscopic redshift,
+using Milky Way extinction-corrected optical/infrared colors, an
+apparent magnitude, mean surface brightness, angular diameter, aspect
+ratio (*b/a*), and the Tractor Sérsic index as features. Apparent
+magnitude and surface brightness, :math:`m` and
+:math:`\langle\mu\rangle`, respectively, use the *r* band, falling
+back to *i* and then *g* when *r* is unavailable, where
+
+.. math::
+
+   \langle\mu\rangle = m + 2.5\,\log_{10}\!\left(\frac{\pi}{4}\,\frac{b}{a}\,(60\,D_{26})^2\right)
+
+and ``D26`` is the major-axis diameter at the
+:math:`26~\mathrm{mag~arcsec}^{-2}` isophote in arcmin.
+
+We validate the model with 5-fold cross-validation, then retrain it on
+the full spectroscopic subsample and predict ``Z_PHOT`` for every
+galaxy in the catalog. ``Z_PHOT_IVAR`` is the inverse variance of the
+spread of predictions across the individual trees of the forest.
 
 .. list-table::
    :header-rows: 1
@@ -913,25 +921,27 @@ predictions across the individual trees of the forest.
    * - Feature
      - Importance
    * - *g* − *r*
-     - 0.5698
-   * - ``D26``
-     - 0.0849
-   * - Apparent magnitude
-     - 0.0744
-   * - Surface brightness
-     - 0.0605
+     - 0.5622
+   * - Angular diameter (``D26``)
+     - 0.0805
+   * - Apparent magnitude :math:`m`
+     - 0.0786
    * - *z* − W1
-     - 0.0592
+     - 0.0559
+   * - Surface brightness :math:`\langle\mu\rangle`
+     - 0.0538
    * - W1 − W2
-     - 0.0520
+     - 0.0510
+   * - Sérsic index (``SERSIC``)
+     - 0.0312
    * - *r* − *i*
-     - 0.0317
+     - 0.0286
    * - NUV − *g*
-     - 0.0232
+     - 0.0196
+   * - Aspect ratio b/a (``BA``)
+     - 0.0157
    * - *i* − *z*
-     - 0.0183
-   * - ``BA``
-     - 0.0181
+     - 0.0153
 
 **Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
 
