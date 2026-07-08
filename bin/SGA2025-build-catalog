@@ -152,13 +152,16 @@ the CMB-frame redshift, with Z_COSMO_IVAR carried over unchanged from Z_IVAR.
 If pvhub is not installed, Z_COSMO falls back to the CMB-frame redshift
 (no peculiar-velocity correction) for all objects.
 
-For objects with no spectroscopic Z (Z_IVAR=0) but a usable Z_PHOT, Z_COSMO
-falls back further to the CMB-frame-converted Z_PHOT, with Z_COSMO_IVAR
-carried over unchanged from Z_PHOT_IVAR -- no pvhub correction is attempted
-here, since Z_PHOT's own scatter (photo-z NMAD ~0.01, i.e. a few thousand
-km/s) is far larger than any peculiar-velocity correction pvhub could
-provide, so querying it would add noise rather than remove it. This in turn
-means the Hubble-flow DIST tier below now also covers Z_PHOT-only objects.
+For objects with no usable Z_COSMO from the adopted Z -- either no
+spectroscopic Z at all (Z_IVAR=0), or a real spec-z whose resolved Z_COSMO
+still came out <=0 (common for very nearby dwarfs/cluster members, e.g.
+Virgo/Fornax, where peculiar velocity swamps the tiny Hubble-flow signal) --
+Z_COSMO falls back further to the CMB-frame-converted Z_PHOT, with
+Z_COSMO_IVAR carried over unchanged from Z_PHOT_IVAR. No pvhub correction is
+attempted here, since Z_PHOT's own scatter (photo-z NMAD ~0.01, i.e. a few
+thousand km/s) is far larger than any peculiar-velocity correction pvhub
+could provide, so querying it would add noise rather than remove it. This in
+turn means the Hubble-flow DIST tier below now also covers these objects.
 
 Sentinels
 ---------
@@ -1218,8 +1221,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # --- Photometric redshift (optional; from bin/SGA2025-photoz) ----------
     # Matched by SGAID; Z_PHOT_IVAR = 1/Z_PHOT_ERR**2 (0. sentinel when the
     # catalog isn't given, an object has no match, or Z_PHOT_ERR isn't
-    # usable). Only ever used downstream to fill in Z_COSMO for objects with
-    # no spectroscopic Z -- never touches Z/Z_IVAR/Z_REF.
+    # usable). Only ever used downstream to fill in Z_COSMO when the adopted
+    # Z gives no usable Z_COSMO (no spec-z, or Z_COSMO<=0) -- never touches
+    # Z/Z_IVAR/Z_REF.
     phot_arrs = {
         'Z_PHOT':      np.zeros(n, np.float64),
         'Z_PHOT_IVAR': np.zeros(n, np.float64),
@@ -1692,29 +1696,47 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  Z_COSMO: {n_has_z:,d}/{n:,d} objects with Z_IVAR>0, '
                  f'{n_pvhub:,d} within pvhub domain (v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s)')
 
-    # --- Z_COSMO fallback, objects with no spectroscopic Z: photo-z --------
+    # --- Z_COSMO fallback, no usable Z_COSMO from the adopted Z: photo-z ---
+    # Covers two cases: (1) no spectroscopic Z at all (Z_COSMO left at its
+    # zero sentinel above), and (2) a real spec-z whose resolved Z_COSMO
+    # still came out <=0 -- common for very nearby dwarfs/cluster members
+    # (e.g. Virgo/Fornax) where peculiar velocity swamps the tiny Hubble-flow
+    # signal. Checked empirically against the SGA2025-v1.0 sample: of the
+    # objects with a real Z but Z_COSMO<=0 and no direct DIST, only 45/131
+    # recover using the plain CMB-frame Z (i.e. just dropping the pvhub
+    # correction); falling back to Z_PHOT instead recovers all of them.
+    #
     # No pvhub peculiar-velocity correction here -- Z_PHOT's own scatter
     # (photo-z NMAD ~0.011, i.e. ~3300 km/s) swamps any flow-field correction
     # (~150-500 km/s), and querying pvhub with such an imprecise redshift
     # would inject noise rather than remove it. Same treatment as objects
     # beyond pvhub's domain: CMB-frame redshift only, with Z_COSMO_IVAR
     # carried over unchanged (here, from Z_PHOT_IVAR rather than Z_IVAR).
-    has_phot_only = (~has_z) & (phot_arrs['Z_PHOT_IVAR'] > 0.)
-    n_phot_only   = int(np.sum(has_phot_only))
-    if n_phot_only:
-        ra_p    = np.array(beta['RA'])[has_phot_only]
-        dec_p   = np.array(beta['DEC'])[has_phot_only]
-        zphot_p = phot_arrs['Z_PHOT'][has_phot_only]
-        cosmo_arrs['Z_COSMO'][has_phot_only]      = _helio_to_cmb_z(ra_p, dec_p, zphot_p)
-        cosmo_arrs['Z_COSMO_IVAR'][has_phot_only] = phot_arrs['Z_PHOT_IVAR'][has_phot_only]
-    log.info(f'  Z_COSMO: {n_phot_only:,d}/{n:,d} additional objects filled from Z_PHOT '
-             '(no spectroscopic Z; no peculiar-velocity correction applied)')
+    needs_phot_fallback = (cosmo_arrs['Z_COSMO'] <= 0.) & (phot_arrs['Z_PHOT_IVAR'] > 0.)
+    n_phot_fallback     = int(np.sum(needs_phot_fallback))
+    if n_phot_fallback:
+        ra_p    = np.array(beta['RA'])[needs_phot_fallback]
+        dec_p   = np.array(beta['DEC'])[needs_phot_fallback]
+        zphot_p = phot_arrs['Z_PHOT'][needs_phot_fallback]
+        cosmo_arrs['Z_COSMO'][needs_phot_fallback]      = _helio_to_cmb_z(ra_p, dec_p, zphot_p)
+        cosmo_arrs['Z_COSMO_IVAR'][needs_phot_fallback] = phot_arrs['Z_PHOT_IVAR'][needs_phot_fallback]
+    log.info(f'  Z_COSMO: {n_phot_fallback:,d}/{n:,d} additional objects filled/replaced from '
+             'Z_PHOT (no usable Z_COSMO from the adopted Z; no peculiar-velocity correction)')
+
+    # Anything left <=0 despite a fallback attempt means Z_PHOT itself was
+    # <=0 (e.g. a Local Group dwarf-like blueshift prediction, see
+    # py/SGA/photoz.py) and there was no direct DIST measurement either.
+    still_bad = (cosmo_arrs['Z_COSMO'] <= 0.) & (phot_arrs['Z_PHOT_IVAR'] > 0.)
+    if np.any(still_bad):
+        log.warning(f'  {int(np.sum(still_bad)):,d} objects still have Z_COSMO<=0 '
+                    'after the Z_PHOT fallback')
 
     # --- Adopted distance, 4th tier: Hubble flow from Z_COSMO (H0=h0) ------
     # Only fills objects that got nothing from NED_DIRECT/LVD/NED above and
-    # have a usable Z_COSMO -- including, now, objects whose only redshift is
-    # Z_PHOT (see the Z_COSMO fallback above). Objects with no redshift of
-    # any kind (spectroscopic or photometric) still get no distance here.
+    # have a usable Z_COSMO -- including, now, objects whose Z_COSMO came
+    # from the Z_PHOT fallback above (no spec-z, or a spec-z whose Z_COSMO
+    # came out <=0). Objects with no usable redshift of any kind
+    # (spectroscopic or photometric) still get no distance here.
     zcosmo      = cosmo_arrs['Z_COSMO']
     zcosmo_ivar = cosmo_arrs['Z_COSMO_IVAR']
     use_hflow = (dist_arrs['DIST'] <= 0.) & (zcosmo > 0.) & (zcosmo_ivar > 0.)
@@ -2231,8 +2253,8 @@ def main():
     parser.add_argument('--photoz-catalog',
                         help='Path to SGA2025-photoz-{version}.fits (see SGA2025-photoz); '
                              'matched by SGAID to fill Z_PHOT/Z_PHOT_IVAR, and used to fill '
-                             'Z_COSMO (and, in turn, the Hubble-flow DIST) for objects with '
-                             'no spectroscopic Z')
+                             'Z_COSMO (and, in turn, the Hubble-flow DIST) whenever the '
+                             'adopted Z gives no usable Z_COSMO -- no spec-z, or Z_COSMO<=0')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
