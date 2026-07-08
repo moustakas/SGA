@@ -368,8 +368,7 @@ into the groups below.
      - Adopted distance (Mpc; 0 = no measurement)
    * - ``DIST_IVAR``
      - float32
-     - Inverse variance of adopted distance (Mpc\ :sup:`−2`; 0 = no measurement
-       or no formal uncertainty reported)
+     - Inverse variance of adopted distance (Mpc\ :sup:`−2`; 0 = no measurement)
    * - ``DIST_REF``
      - str10
      - Source of adopted distance: ``NED_DIRECT``, ``LVD``, ``NED``, or ``ZCOSMO``
@@ -377,6 +376,23 @@ into the groups below.
      - str16
      - Specific distance technique (e.g. ``TRGB``, ``SBF``, LVD's own reported
        method, ``NED_MEAN``, or ``HUBBLE_FLOW``)
+
+**Photometric redshift** (see :ref:`redshifts` for details)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``Z_PHOT``
+     - float64
+     - Random-forest photometric redshift (0 = no measurement; use
+       ``Z_PHOT_IVAR > 0`` to test)
+   * - ``Z_PHOT_IVAR``
+     - float64
+     - Inverse variance of ``Z_PHOT`` (0 = no measurement)
 
 **Peculiar-velocity-corrected redshift** (see :ref:`redshifts` for details)
 
@@ -409,16 +425,16 @@ into the groups below.
      - Bare group name (= on-disk directory name)
    * - ``GROUP_MULT``
      - int16
-     - Number of group members
+     - Group multiplicity (i.e., number of group members)
    * - ``GROUP_PRIMARY``
      - bool
-     - ``True`` for the primary (largest) group member
+     - ``True`` for the primary (largest) group member based on the *initial* diameter
    * - ``GROUP_RA``, ``GROUP_DEC``
      - float64
-     - Group centroid coordinates (deg)
+     - Diameter-weighted group centroid coordinates (deg)
    * - ``GROUP_DIAMETER``
      - float32
-     - Diameter of smallest enclosing circle (arcmin)
+     - Angular diameter of the full group (arcmin)
 
 **Fitted geometry**
 
@@ -458,8 +474,9 @@ into the groups below.
      - Optical half-light semi-major axis ± uncertainty, from the
        curve-of-growth fit (arcsec); IR/UV bands are in ``ELLIPSEPHOT``
 
-**Nominal photometry** (default aperture/method; see ``ELLIPSEPHOT`` for the
-full aperture grid and curve-of-growth fits)
+**Nominal photometry** (default aperture/method; see the
+``ELLIPSEPHOT`` HDU for the full aperture grid and curve-of-growth
+fits)
 
 .. list-table::
    :header-rows: 1
@@ -596,7 +613,7 @@ and ``Z_IVAR_SDSS`` are 0; string columns are blank.
        of 100 km/s is assumed. Set to 0 only when no NED redshift exists.
    * - ``Z_REF_NED``
      - str
-     - NED literature reference for the redshift
+     - NED reference for the redshift
    * - ``DIST_NED``
      - float32
      - NED distance (Mpc; 0 = no NED distance)
@@ -607,7 +624,7 @@ and ``Z_IVAR_SDSS`` are 0; string columns are blank.
    * - ``DIST_NED_DIRECT``
      - float32
      - NED "gold-tier" direct distance, from a single high-precision
-       literature measurement (Mpc; 0 = none available)
+       measurement from the literature (Mpc; 0 = none available)
    * - ``DIST_IVAR_NED_DIRECT``
      - float32
      - Inverse variance of ``DIST_NED_DIRECT`` (Mpc\ :sup:`−2`; 0 if no
@@ -873,6 +890,49 @@ We resolve a small residual of flagged redshifts (see ``Z_FLAG`` in
 ``SGAID``, overriding or discarding the adopted redshift and setting
 ``VI_REVIEWED``.
 
+**Photometric redshift (Z_PHOT, Z_PHOT_IVAR)**
+
+We train a
+`scikit-learn RandomForestRegressor <https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html>`_
+on the subsample of galaxies with an adopted spectroscopic redshift, using
+optical/infrared colors, an apparent magnitude, surface brightness,
+isophotal diameter, axis ratio, and Galactic extinction as features.
+Apparent magnitude and surface brightness use the *r* band, falling back to
+*i* and then *g* when *r* is unavailable. We validate the model with 5-fold
+cross-validation, then retrain it on the full spectroscopic subsample and
+predict ``Z_PHOT`` for every galaxy in the catalog. ``Z_PHOT_IVAR`` is the
+inverse variance of the spread of predictions across the individual trees
+of the forest.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 60 40
+
+   * - Feature
+     - Importance
+   * - *g* − *r*
+     - 0.4714
+   * - Apparent magnitude
+     - 0.1130
+   * - W1 − W2
+     - 0.1092
+   * - E(B−V)
+     - 0.0820
+   * - Surface brightness
+     - 0.0548
+   * - ``D26``
+     - 0.0425
+   * - *z* − W1
+     - 0.0398
+   * - *r* − *i*
+     - 0.0228
+   * - NUV − *g*
+     - 0.0216
+   * - ``BA``
+     - 0.0209
+   * - *i* − *z*
+     - 0.0171
+
 **Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
 
 For every galaxy with ``Z_IVAR > 0``, we convert the heliocentric ``Z`` to
@@ -888,6 +948,14 @@ CMB-frame redshift with their mean peculiar velocity removed, and
 uncertainty in quadrature. Beyond 20,000 km/s, ``Z_COSMO`` is simply the
 CMB-frame redshift and ``Z_COSMO_IVAR`` carries over ``Z_IVAR`` unchanged.
 
+When this leaves ``Z_COSMO`` undefined, we substitute, in priority order:
+
+1. The equivalent Hubble-flow redshift from an independently measured
+   distance (``NED_DIRECT``, ``LVD``, or ``NED``; see :ref:`distances`),
+   inverted through our fiducial cosmology.
+2. The CMB-frame-converted photometric redshift, ``Z_PHOT``, with
+   ``Z_COSMO_IVAR`` set from ``Z_PHOT_IVAR``.
+
 .. _distances:
 
 Distances
@@ -898,21 +966,25 @@ high-precision "gold-tier" measurements compiled by
 `NED <https://ned.ipac.caltech.edu/>`_, the
 `Local Volume Database (LVD) <https://local-volume-database.readthedocs.io/en/latest/index.html>`_,
 NED's own blended "mean" distance, and — for every remaining galaxy with a
-measured redshift — a Hubble-flow distance derived from ``Z_COSMO``.
+measured redshift — a luminosity distance derived from ``Z_COSMO`` under our
+fiducial cosmology, flat ΛCDM with H0 = 70 km/s/Mpc and Ωm = 0.3.
 
 **Adopted distance (DIST, DIST_IVAR, DIST_REF, DIST_METHOD)**
 
 Priority order **NED direct > LVD > NED mean > Hubble flow**:
 
-1. ``DIST_REF = NED_DIRECT`` when a high-precision "gold-tier" NED distance
-   is available (Cepheids, TRGB, PNLF, SBF, SNIa, SNII, GCLF, or SNIa-SDSS).
-   If the best available gold-tier method rests on a single, unreplicated
-   reference and conflicts with a more consistent measurement from another
-   gold-tier method, we adopt the latter instead.
+1. ``DIST_REF = NED_DIRECT`` when a high-precision "gold-tier" distance is
+   available from NED, in priority order Cepheids, TRGB, PNLF, SBF, SNIa,
+   SNII, GCLF, SNIa-SDSS. The highest-priority method present must be
+   confirmed by at least 3 independent references. If it is not, and a
+   lower-priority method is confirmed by at least 3 references, agrees with
+   itself to 15%, and disagrees with the top method by more than 15%, we
+   adopt that lower-priority method's mean and standard deviation instead.
 2. ``DIST_REF = LVD`` when ``DIST_LVD > 0`` (converted from kpc to Mpc).
 3. ``DIST_REF = NED`` when ``DIST_NED > 0`` (NED's blended "mean" distance).
 4. ``DIST_REF = ZCOSMO`` for every remaining galaxy with a measured
-   redshift: a Hubble-flow distance, ``DIST = c`` × ``Z_COSMO`` / 70 km/s/Mpc.
+   redshift: the luminosity distance at ``Z_COSMO`` under our fiducial
+   cosmology.
 
 ``DIST_METHOD`` records the specific technique behind the adopted value.
 For any adopted distance with no reported uncertainty, we assign a 15%
@@ -920,8 +992,8 @@ fractional floor rather than ``DIST_IVAR = 0``.
 
 .. note::
 
-   Gold-tier method abbreviations, in priority order, with their typical
-   distance-modulus uncertainty (mag) inferred from the literature values
+   Gold-tier method abbreviations, in priority order, with their
+   typical distance-modulus uncertainty (mag) inferred from the values
    compiled in NED:
 
    .. list-table::
@@ -1200,7 +1272,7 @@ internal resolution.
      - 1
      - Any two measured redshifts (LVD, DESI, SDSS, NED) differ by more
        than 1000 km/s in the rest frame. Deliberately sensitive -- a coarse
-       literature NED redshift can exceed this against a precise DESI/SDSS
+       NED redshift can exceed this against a precise DESI/SDSS
        spectrum that is otherwise fine, so this bit alone does not imply
        the adopted redshift is wrong
    * - ``NED_SUSPECT``
