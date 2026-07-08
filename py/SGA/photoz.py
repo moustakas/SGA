@@ -4,7 +4,9 @@ SGA.photoz
 
 Photometric-redshift estimation for the SGA-2025 sample using a random
 forest regressor, trained on the spectroscopic subsample (``Z_IVAR>0``,
-roughly two-thirds of ``GROUP_PRIMARY`` galaxies).
+roughly two-thirds of the sample). Runs on all group members (not just
+``GROUP_PRIMARY``) -- SGA groups are angular associations, not physical
+ones, so every member galaxy needs its own redshift.
 
 Typical workflow (see ``bin/SGA2025-photoz`` for the full pipeline):
 
@@ -13,7 +15,7 @@ Typical workflow (see ``bin/SGA2025-photoz`` for the full pipeline):
                             train_and_evaluate, fit_final_model, nmad,
                             outlier_fraction)
 
-    sample, _ = read_sga_sample()
+    _, sample = read_sga_sample()  # all group members, not just GROUP_PRIMARY
 
     X, feature_names, row_mask = build_features(sample)
     train_mask = select_spec_subsample(sample) & row_mask
@@ -32,12 +34,19 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import KFold
 
 from SGA.SGA import Z_FLAG
+from SGA.coadds import REGIONBITS
 from SGA.logger import log
 
-# Photometric bands used to build colors, in the order used to form
-# consecutive colors (g-r, r-z, z-W1, W1-W2), matching the reference
-# random_forest_photo-z_example.ipynb.
-FEATURE_BANDS = ['G', 'R', 'Z', 'W1', 'W2']
+# Photometric bands used to build consecutive colors (g-r, r-i, i-z,
+# W1-W2). Includes both optical neighbors of r (g and i) so that objects
+# missing FLUX_R (~2% of the sample) still get a usable adjacent color
+# instead of losing the whole g/r/i/z chain.
+FEATURE_BANDS = ['G', 'R', 'I', 'Z', 'W1', 'W2']
+
+# Priority order for the single-band "apparent brightness"/surface-brightness
+# magnitude: r is usually best-measured, but when it's missing i covers far
+# more objects than g (85% vs. 47%, checked against the SGA2025-v1.0 sample).
+BRIGHTNESS_BANDS = ['R', 'I', 'G']
 
 MAG_MAX = 30.   # magnitudes fainter than this are treated as non-detections
 MAG_FILL = 30.  # fill value substituted for non-detections/bad flux
@@ -84,7 +93,29 @@ def _flux_to_mag(flux, mag_max=MAG_MAX, mag_fill=MAG_FILL):
     return mag
 
 
-def build_features(sample, bands=FEATURE_BANDS, mag_max=MAG_MAX):
+def _censor_north_z(sample, flux_z):
+    """Zero out ``FLUX_Z`` for dr11-north-only rows (``REGION`` exactly
+    equal to ``REGIONBITS['dr11-north']``, i.e. unambiguously north-sourced
+    photometry -- overlap rows with both region bits set are left alone,
+    since the actual adopted photometry there may already be dr11-south).
+
+    dr11-north z-band (BASS+MzLS) is systematically redder relative to
+    south with increasing D26 -- median z-W1 drifts from about -0.15 mag
+    at D26<0.5 arcmin to +0.15 mag at D26>10 arcmin, versus a roughly flat
+    -0.26 to -0.85 mag in dr11-south over the same range (checked against
+    the SGA2025-v1.0 sample) -- so it's censored outright rather than used
+    with a size cut.
+
+    """
+    flux_z = np.array(flux_z, dtype=np.float64, copy=True)
+    region = np.asarray(sample['REGION'])
+    north_only = region == REGIONBITS['dr11-north']
+    flux_z[north_only] = 0.
+    return flux_z
+
+
+def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BANDS,
+                   mag_max=MAG_MAX, censor_north_z=True):
     """Assemble the random-forest feature matrix from the base SGA2025
     columns (``FLUX_{band}``, ``D26``, ``BA``, ``EBV``) -- no
     ``ELLIPSEPHOT`` join needed.
@@ -92,48 +123,84 @@ def build_features(sample, bands=FEATURE_BANDS, mag_max=MAG_MAX):
     Parameters
     ----------
     sample : :class:`~astropy.table.Table`
-        Table with ``FLUX_{band}`` for each of ``bands``, plus ``D26``,
-        ``BA``, ``EBV`` (e.g. from :func:`SGA.SGA.read_sga_sample`).
+        Table with ``FLUX_{band}`` for each of ``bands``, plus ``REGION``,
+        ``D26``, ``BA``, ``EBV`` (e.g. from :func:`SGA.SGA.read_sga_sample`).
     bands : :class:`list` of :class:`str`
-        Bands to form consecutive colors from (default g,r,z,W1,W2).
+        Bands to form consecutive colors from (default g,r,i,z,W1,W2).
+    brightness_bands : :class:`list` of :class:`str`
+        Priority-ordered fallback bands for the single apparent-magnitude
+        and surface-brightness features (default r, then i, then g).
     mag_max : :class:`float`
         Passed to :func:`_flux_to_mag`.
+    censor_north_z : :class:`bool`
+        If True (default), zero out ``FLUX_Z`` for dr11-north-only rows
+        before computing anything (see :func:`_censor_north_z`).
 
     Returns
     -------
     X : :class:`~numpy.ndarray`, shape (nobj, nfeat)
-        Feature matrix: colors, the reddest-of-the-first-pair magnitude
-        (e.g. r), ``D26``, ``BA``, ``EBV``.
+        Feature matrix: consecutive colors, a fallback brightness
+        magnitude, ``D26``, ``BA``, ``EBV``, a surface-brightness proxy,
+        and one detected/not-detected flag per band.
     feature_names : :class:`list` of :class:`str`
     row_mask : :class:`~numpy.ndarray` of :class:`bool`, shape (nobj,)
-        True where all features are finite and non-degenerate (see notes
-        below); callers should combine this with
+        True where all features are finite and ``D26``/``BA`` are
+        positive; callers should combine this with
         :func:`select_spec_subsample` before training.
 
     Notes
     -----
-    Following the reference notebook, a color that is exactly zero
-    (both bands hit ``mag_fill``, or the two bands are otherwise
-    identical) is flagged as degenerate for the first three colors only
-    (g-r, r-z, z-W1); a zero W1-W2 color is common for real sources near
-    the unWISE detection limit and is kept.
+    A color or the brightness magnitude is only as good as the bands
+    behind it; rather than dropping a whole row when one band is missing
+    (the previous behavior), a missing band's contribution to any color is
+    zeroed out and its own ``detected_{band}`` flag is set to 0, so the
+    model can learn to discount it instead of losing the row entirely.
+    Checked against the full SGA2025-v1.0 sample (470,625 objects, all
+    group members): every single row now gets a usable feature vector --
+    ``row_mask`` is only ever False for ``D26<=0``/``BA<=0``, which does
+    not occur in practice.
 
     """
-    mags = {b: _flux_to_mag(sample[f'FLUX_{b}'], mag_max=mag_max) for b in bands}
+    flux = {b: np.asarray(sample[f'FLUX_{b}'], dtype=np.float64) for b in bands}
+    if censor_north_z and 'Z' in bands:
+        flux['Z'] = _censor_north_z(sample, flux['Z'])
 
-    colors = [mags[b1] - mags[b2] for b1, b2 in zip(bands[:-1], bands[1:])]
-    color_names = [f'{b1.lower()}-{b2.lower()}' for b1, b2 in zip(bands[:-1], bands[1:])]
+    detected = {b: flux[b] > 0 for b in bands}
+    mags = {b: _flux_to_mag(flux[b], mag_max=mag_max) for b in bands}
+
+    color_names, colors = [], []
+    for b1, b2 in zip(bands[:-1], bands[1:]):
+        valid = detected[b1] & detected[b2]
+        color = np.where(valid, mags[b1] - mags[b2], 0.)
+        colors.append(color)
+        color_names.append(f'{b1.lower()}-{b2.lower()}')
+
+    n = len(sample)
+    brightness_mag = np.full(n, MAG_FILL, dtype=np.float64)
+    brightness_detected = np.zeros(n, dtype=bool)
+    for b in brightness_bands:
+        use = detected[b] & ~brightness_detected
+        brightness_mag[use] = mags[b][use]
+        brightness_detected |= detected[b]
 
     d26 = np.asarray(sample['D26'], dtype=np.float64)
     ba = np.asarray(sample['BA'], dtype=np.float64)
     ebv = np.asarray(sample['EBV'], dtype=np.float64)
 
-    feature_names = color_names + [bands[1].lower(), 'D26', 'BA', 'EBV']
-    X = np.column_stack(colors + [mags[bands[1]], d26, ba, ebv])
+    # Average surface brightness within the D26 isophote (mag/arcsec^2),
+    # using whichever band fed the brightness magnitude above.
+    area_arcsec2 = (np.pi / 4.) * ba * (d26 * 60.)**2
+    good_area = brightness_detected & (area_arcsec2 > 0)
+    sb = np.full(n, MAG_FILL, dtype=np.float64)
+    sb[good_area] = brightness_mag[good_area] + 2.5 * np.log10(area_arcsec2[good_area])
+
+    detected_names = [f'detected_{b.lower()}' for b in bands]
+    detected_arrs = [detected[b].astype(np.float64) for b in bands]
+
+    feature_names = (color_names + ['mag', 'D26', 'BA', 'EBV', 'SB'] + detected_names)
+    X = np.column_stack(colors + [brightness_mag, d26, ba, ebv, sb] + detected_arrs)
 
     row_mask = np.all(np.isfinite(X), axis=1) & (d26 > 0) & (ba > 0)
-    for color in colors[:3]:
-        row_mask &= (color != 0)
 
     return X, feature_names, row_mask
 

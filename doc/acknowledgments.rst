@@ -1,9 +1,6 @@
 Acknowledgments
 ================
 
-This page collects the acknowledgments requested by the funding agencies,
-surveys, and databases that make the Siena Galaxy Atlas possible.
-
 ----
 
 Siena Galaxy Atlas

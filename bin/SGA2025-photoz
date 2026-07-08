@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """SGA2025-photoz: train a random-forest photometric-redshift model on the
 SGA-2025 spectroscopic subsample (Z_IVAR>0, roughly two-thirds of the
-GROUP_PRIMARY sample) and predict Z_PHOT for every galaxy in the sample.
+sample) and predict Z_PHOT for every galaxy in the sample -- all group
+members, not just GROUP_PRIMARY, since SGA groups are angular associations
+and every member galaxy needs its own redshift.
 
 Writes, to --outdir (default $SGA_DIR/photoz):
   SGA2025-photoz-{version}.fits    -- SGAID, Z_PHOT, Z_PHOT_ERR, Z_PHOT_TRAINSET
@@ -87,8 +89,11 @@ def main():
         return
 
     log.info('Reading the SGA2025 sample...')
-    sample, _ = read_sga_sample()
-    log.info(f'Read {len(sample):,d} GROUP_PRIMARY objects.')
+    # Read the full group membership (not just GROUP_PRIMARY): groups are
+    # angular associations, not physical ones, so every member galaxy needs
+    # its own redshift, not just the group's primary/central one.
+    _, sample = read_sga_sample()
+    log.info(f'Read {len(sample):,d} objects (all group members).')
 
     X, feature_names, row_mask = build_features(sample)
     log.info('Features: {}'.format(', '.join(feature_names)))
@@ -119,6 +124,11 @@ def main():
 
     log.info('Fitting the final model on the full spectroscopic subsample...')
     model = fit_final_model(Xtrain, z_spec, random_state=args.random_state, **rf_kwargs)
+
+    importance_order = np.argsort(model.feature_importances_)[::-1]
+    log.info('Feature importances:')
+    for i in importance_order:
+        log.info('  {:10s} {:.4f}'.format(feature_names[i], model.feature_importances_[i]))
 
     log.info('Predicting Z_PHOT for the full sample...')
     z_phot, z_phot_err = predict_with_uncertainty(model, X)
