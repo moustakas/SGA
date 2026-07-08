@@ -10,7 +10,7 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
 
 - `py/SGA/` - Main Python package with core modules:
   - `parent.py` - Build parent sample from external catalogs (NED, HyperLeda, LVD, etc.)
-  - `SGA.py` - Core definitions: sample bits, mask bits, version control, `read_sga_sample`
+  - `SGA.py` - Core definitions: sample bits, mask bits, version control, `read_sample` (parent catalog, pre-ellipse-fitting) and `read_sga_sample` (final ellipse/Tractor catalog)
   - `ellipse.py` - Ellipse photometry fitting
   - `external.py` - External catalog parsing (HyperLeda, NED, SDSS, Gaia)
   - `qa.py` - QA plot generation
@@ -20,13 +20,32 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `logger.py` - Unified logging (distinct from DESI loggers)
   - `photoz.py` - Random-forest photometric-redshift estimation, trained on the spectroscopic subsample (`Z_IVAR>0`)
   - `cosmo.py` - Thin fiducial-cosmology wrapper (flat LambdaCDM, H0=70, Om0=0.3); exact luminosity distance and its inverse, swappable to a different cosmology (e.g. DESI) in one place
-- `bin/` - Active executable scripts. Key scripts:
+  - `brick.py` - Brick tiling geometry (`custom_brickname`, footprint calculations)
+  - `calibrate.py` - Rr(26) isophotal-radius calibration
+  - `coadds.py` - Coadd/mosaic pipeline; pixel scales (`PIXSCALE`, `GALEX_PIXSCALE`, `UNWISE_PIXSCALE`) and region-run definitions (`RUNS`, `REGIONBITS`)
+  - `cutouts.py` - Generate large batches of (annotated) image cutouts
+  - `geometry.py` - Ellipse-based geometry: light-weighted moment fitting, elliptical apertures/masks and overlap testing, Tractor ellipticity conversion, literature-catalog geometry selection/merging
+  - `mpi.py` - CLI/argument parsing for the `bin/SGA2025-mpi` processing driver
+  - `misc.py` - Miscellaneous utilities (e.g. `viewer_inspect` for Legacy Survey viewer VI catalogs)
+  - `photo.py` - Early, simpler photometry prototype; not wired into any driver script and currently broken (imports the deliberately-removed `SGA.find_galaxy`), superseded by `ellipse.py`
+  - `sky.py` - Sky-position utilities (e.g. Magellanic Cloud membership flagging)
+  - `ssl.py` - Build ssl-legacysurvey input catalogs from SGA-2025 mosaics and run MoCo v2 inference
+  - `ssl_build_montage.py` - Build sorted PDF montages of galaxy cutouts from SSL nearest-neighbour similarity matrices
+  - `ssl_sort.py` - Generate UMAP representations of HDF5 cutout chunks for SSL similarity search
+  - `util.py` - General support utilities and constants (e.g. `C_LIGHT`, `TINY`)
+  - `webapp/` - Legacy Django-based SGA-2020 catalog web viewer; deployed separately at NERSC (`cosmo/webapp/sga-webapp`), not part of the SGA-2025 pipeline
+- `bin/` - Active executable scripts. Note: only `SGA2025-mpi` and `generate-sga-slurm` are installed as entry points via `pyproject.toml`'s `script-files`; the rest are run by adding this checkout's `bin/` to `PATH`. Key scripts:
   - `SGA2025-mpi` - MPI processing driver (coadds, ellipse, htmlplots, htmlindex)
   - `generate-sga-slurm` - Generate NERSC SLURM batch scripts for any SGA processing stage (see `etc/README.sga-slurm`)
   - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
   - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
+  - `SGA2025-ned-lvd-patch` - One-time patch to strip LVD rows from completed `ned-byname-{region}.csv` files so `SGA2025-ned-query --byname` can re-query them with NED-friendly names
   - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD (+ optional `SGA2025-photoz` output, see `--photoz-catalog`) into final per-region FITS, then merge dr11-south + dr11-north into a single deduplicated `SGA2025-{version}.fits`; derives `GALAXY` and `ALTNAMES` columns (see below)
   - `SGA2025-photoz` - Train/cross-validate the `SGA.photoz` random-forest model and predict `Z_PHOT`/`Z_PHOT_ERR` for the full sample; writes `SGA2025-photoz-{version}.fits`/`.joblib` to `$SGA_DIR/photoz`, for optional input to `SGA2025-build-catalog --photoz-catalog`
+  - `SGA2025-desi-dr1-match` - Match the SGA sample against DESI DR1 (`zall-pix-iron`) or SDSS DR17 spectra within each galaxy's elliptical D26/2 aperture (or a fixed radius for `--sdss`)
+  - `SGA2025-qa-redshifts` - Flag high-redshift objects for visual inspection and write a VI worksheet consumable by `SGA2025-build-catalog --vi-redshifts`
+  - `SGA2025-ssl-cutouts` - Build HDF5 cutout datasets (152×152 px) from SGA-2025 coadds for SSL inference
+  - `SGA2025-ssl-embeddings` - Run MoCo v2 inference on `SGA2025-ssl-cutouts` output to extract ResNet50 backbone/projection embeddings
 - `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
@@ -34,6 +53,7 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
 - `doc/` - Sphinx documentation source (RTD, theme: furo). Key files:
   - `conf.py`, `index.rst`, `install.rst` - Sphinx config and landing pages
   - `sga2025.rst` - SGA-2025 data release page (naming, data model, file inventory)
+  - `acknowledgments.rst` - Funding, citation, and external data/tools acknowledgments
   - `_static/custom.css` - custom CSS (section spacing, table alignment)
   - `requirements.txt` - doc build dependencies (sphinx, furo, sphinx-design)
   - `SGA2025/` - SGA-2025 analysis and calibration notebooks (distinct from `sga2025.rst`)
