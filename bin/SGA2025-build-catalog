@@ -154,7 +154,21 @@ mismatch is corrected before writing (known case: REGION int64 -> int16).
 
 Output
 ------
-  {outdir}/SGA2025-{region}-{version}.fits   (EXTNAME='SGA2025')
+  {outdir}/SGA2025-{region}-{version}.fits, three extensions:
+    SGA2025      -- primary catalog: identification, geometry, redshifts,
+                    distances, spectroscopy, and nominal photometry
+                    (SMA_FLUX, FLUX_REF, FLUX_{band}/FLUX_IVAR_{band};
+                    per-object default aperture/method, see
+                    DEFAULT_PHOT_METHOD).
+    ELLIPSEPHOT  -- full aperture-photometry/curve-of-growth grid
+                    (SGAID + FLUX_AP##_*, COG_MTOT_*, GINI_*, R22-R26, etc.),
+                    row-matched to SGA2025 via SGAID (leading column).
+    TRACTOR      -- Tractor source-fitting parameters, row-matched to
+                    SGA2025 via REF_ID (also duplicated as a leading
+                    SGAID column, for use standalone).
+
+  merge_regions() combines the per-region files into a single
+  {outdir}/SGA2025-{version}.fits with the same three extensions.
 
 Examples
 --------
@@ -416,14 +430,41 @@ COL_ORDER = [
     'SGAID', 'SGANAME', 'GALAXY', 'ALTNAMES',
     'OBJNAME',
     'PGC', 'RA', 'DEC',
+    'RA_TRACTOR', 'DEC_TRACTOR',
     'MORPH',
     'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
-    # --- Size and geometry (primary SGA product) ---
-    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
-    'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
     # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
     'DIST', 'DIST_IVAR', 'DIST_REF', 'DIST_METHOD',
+    # --- Peculiar-velocity-corrected redshift (pvhub) ---
+    'Z_COSMO', 'Z_COSMO_IVAR',
+    # --- Group finding ---
+    'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
+    'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
+    # --- Size and geometry (primary SGA product) ---
+    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
+    'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
+    # Optical half-light radius (from the curve-of-growth fit; full grid,
+    # including IR/UV bands, is in ELLIPSEPHOT).
+    'SMA50_G', 'SMA50_R', 'SMA50_I', 'SMA50_Z',
+    'SMA50_ERR_G', 'SMA50_ERR_R', 'SMA50_ERR_I', 'SMA50_ERR_Z',
+    # --- Nominal photometry (default aperture/method; see ELLIPSEPHOT for
+    #     the full aperture grid and curve-of-growth fits) ---
+    'SMA_FLUX',
+    'FLUX_G', 'FLUX_R', 'FLUX_I', 'FLUX_Z',
+    'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+    'FLUX_FUV', 'FLUX_NUV',
+    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
+    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+    'FLUX_IVAR_FUV', 'FLUX_IVAR_NUV',
+    'FLUX_REF',
+    # --- Imaging quality and corrections ---
+    'EBV',
+    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_I', 'MW_TRANSMISSION_Z',
+    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4',
+    'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
+    'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
+    'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
     # --- DESI spectroscopy ---
     'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
     'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
@@ -440,21 +481,8 @@ COL_ORDER = [
     #'NED_TYPE', 'NED_MORPH',
     #'NED_FLAG',
     #'NED_SOURCE', 'NED_BYNAME_SEP',
-    # --- Peculiar-velocity-corrected redshift (pvhub) ---
-    'Z_COSMO', 'Z_COSMO_IVAR',
-    # --- Group finding ---
-    'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
-    'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
-    # --- Imaging quality and corrections ---
-    'EBV',
-    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_I', 'MW_TRANSMISSION_Z',
-    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4',
-    'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
-    'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
-    'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
     # --- Processing / initialization metadata ---
     #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
-    'RA_TRACTOR', 'DEC_TRACTOR',
     'RA_INIT', 'DEC_INIT',
     'DIAM_INIT',
     'BA_INIT', 'PA_INIT',
@@ -463,6 +491,15 @@ COL_ORDER = [
     'SMA_MASK',
     'INIT_REF',
     #'FITMODE',
+]
+
+# ---------------------------------------------------------------------------
+# Full-detail ellipse-photometry column order, written to the ELLIPSEPHOT
+# extension (not SGA2025). 'SGAID' is prepended separately when the table is
+# assembled, so this list holds only the photometric/morphological columns.
+# Columns absent from this list are appended at the end in their original order.
+# ---------------------------------------------------------------------------
+ELLIPSEPHOT_COL_ORDER = [
     # --- Morphology (diagnostic) ---
     'GINI_G', 'GINI_R', 'GINI_I', 'GINI_Z',
     'GINI_W1', 'GINI_W2', 'GINI_W3', 'GINI_W4',
@@ -474,11 +511,10 @@ COL_ORDER = [
     'COG_MTOT_ERR_G', 'COG_MTOT_ERR_R', 'COG_MTOT_ERR_I', 'COG_MTOT_ERR_Z',
     'COG_MTOT_ERR_W1', 'COG_MTOT_ERR_W2', 'COG_MTOT_ERR_W3', 'COG_MTOT_ERR_W4',
     'COG_MTOT_ERR_FUV', 'COG_MTOT_ERR_NUV',
-    # --- Half-light radius (from CoG) ---
-    'SMA50_G', 'SMA50_R', 'SMA50_I', 'SMA50_Z',
+    # --- Half-light radius (from CoG; optical SMA50_{G,R,I,Z} lives in
+    #     SGA2025 instead -- see COL_ORDER's "Size and geometry" section) ---
     'SMA50_W1', 'SMA50_W2', 'SMA50_W3', 'SMA50_W4',
     'SMA50_FUV', 'SMA50_NUV',
-    'SMA50_ERR_G', 'SMA50_ERR_R', 'SMA50_ERR_I', 'SMA50_ERR_Z',
     'SMA50_ERR_W1', 'SMA50_ERR_W2', 'SMA50_ERR_W3', 'SMA50_ERR_W4',
     'SMA50_ERR_FUV', 'SMA50_ERR_NUV',
     # --- Optical isophotal radii ---
@@ -853,14 +889,127 @@ def load_vi_redshifts(path):
     return out
 
 
-def _reorder_cols(tbl):
-    """Reorder tbl columns per COL_ORDER; append unlisted columns at the end."""
-    unknown = [c for c in COL_ORDER if c not in tbl.colnames]
+def _reorder_cols(tbl, order=COL_ORDER):
+    """Reorder tbl columns per `order`; append unlisted columns at the end."""
+    unknown = [c for c in order if c not in tbl.colnames]
     if unknown:
-        log.warning(f'COL_ORDER references unknown columns: {unknown}')
-    listed    = [c for c in COL_ORDER if c in tbl.colnames]
+        log.warning(f'Column order references unknown columns: {unknown}')
+    listed    = [c for c in order if c in tbl.colnames]
     remaining = [c for c in tbl.colnames if c not in set(listed)]
     return tbl[listed + remaining]
+
+
+# ---------------------------------------------------------------------------
+# Default ("nominal") photometry
+#
+# FLUX_{band}/FLUX_IVAR_{band} in the SGA2025 extension are not a new
+# measurement -- they're a per-object pick from the full aperture/CoG grid
+# in ELLIPSEPHOT, chosen to give most users a single sensible flux without
+# having to understand the aperture-photometry data model.
+#
+# DEFAULT_PHOT_METHOD is applied uniformly to every object for now. The
+# selection is expected to become per-object once an algorithm for picking
+# the best aperture/method per galaxy (e.g. by S/N, masking fraction, or
+# aperture-correction quality) is developed; _default_photometry already
+# supports that via a per-row `method_arr` -- only the code that builds
+# `method_arr` needs to change.
+# ---------------------------------------------------------------------------
+DEFAULT_PHOT_METHOD = 'AP04'
+
+
+def _photometry_from_method(tbl, bands, method):
+    """Compute FLUX_{band}/FLUX_IVAR_{band} (nanomaggies) and the associated
+    aperture radius for every row in `tbl`, using a single named source.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table`
+        Table with the full ELLIPSEPHOT-style column set (SMA_AP##,
+        FLUX_AP##_*, FLUX_ERR_AP##_*, COG_MTOT_*, COG_MTOT_ERR_*) present.
+    bands : :class:`list` of :class:`str`
+        Bands to compute FLUX_{band}/FLUX_IVAR_{band} for.
+    method : :class:`str`
+        Either an aperture index ('AP00'..'AP04', matching the FLUX_AP##_*
+        columns) or 'COG_MTOT' (total curve-of-growth magnitude, converted
+        to nanomaggies).
+
+    Returns
+    -------
+    flux, ivar : :class:`dict` of {band: :class:`~numpy.ndarray`}
+    sma : :class:`~numpy.ndarray`
+        Aperture semi-major axis (arcsec) within which flux/ivar were
+        measured, for method='AP00'..'AP04'. FLOAT_SENTINEL (no finite
+        aperture) for method='COG_MTOT', an extrapolated/asymptotic total.
+    """
+    flux, ivar = {}, {}
+    for filt in bands:
+        if method.startswith('AP'):
+            f = np.asarray(tbl[f'FLUX_{method}_{filt}'], dtype=np.float64)
+            e = np.asarray(tbl[f'FLUX_ERR_{method}_{filt}'], dtype=np.float64)
+            iv = np.zeros_like(f)
+            good = e > 0
+            iv[good] = 1. / e[good]**2
+        elif method == 'COG_MTOT':
+            mag    = np.asarray(tbl[f'COG_MTOT_{filt}'], dtype=np.float64)
+            magerr = np.asarray(tbl[f'COG_MTOT_ERR_{filt}'], dtype=np.float64)
+            good = mag > 0
+            f = np.zeros_like(mag)
+            f[good] = 10.**(-0.4 * (mag[good] - 22.5))
+            iv = np.zeros_like(mag)
+            errgood = good & (magerr > 0)
+            iv[errgood] = (f[errgood] * 0.4 * np.log(10) * magerr[errgood])**-2
+        else:
+            raise ValueError(f'Unknown photometry method {method!r}')
+        flux[filt] = f.astype(np.float32)
+        ivar[filt] = iv.astype(np.float32)
+
+    if method.startswith('AP'):
+        sma = np.asarray(tbl[f'SMA_{method}'], dtype=np.float32)
+    elif method == 'COG_MTOT':
+        sma = np.full(len(tbl), FLOAT_SENTINEL, dtype=np.float32)
+    else:
+        raise ValueError(f'Unknown photometry method {method!r}')
+    return flux, ivar, sma
+
+
+def _default_photometry(tbl, bands, method_arr):
+    """Assemble default FLUX_{band}/FLUX_IVAR_{band}/SMA_FLUX per object
+    from a per-row method selection.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table`
+        See :func:`_photometry_from_method`.
+    bands : :class:`list` of :class:`str`
+        Bands to compute FLUX_{band}/FLUX_IVAR_{band} for.
+    method_arr : :class:`~numpy.ndarray` of :class:`str`, shape (nobj,)
+        Per-object method name (see :func:`_photometry_from_method`)
+        selecting which source to adopt for that object.
+
+    Returns
+    -------
+    flux, ivar : :class:`dict` of {band: :class:`~numpy.ndarray`}
+        Nanomaggies flux/ivar assembled row-by-row from the method(s)
+        indicated by method_arr.
+    sma : :class:`~numpy.ndarray`
+        Aperture semi-major axis (arcsec), assembled the same way (see
+        :func:`_photometry_from_method`).
+    """
+    methods     = sorted(set(method_arr))
+    precomputed = {m: _photometry_from_method(tbl, bands, m) for m in methods}
+
+    nobj = len(tbl)
+    flux = {filt: np.zeros(nobj, dtype=np.float32) for filt in bands}
+    ivar = {filt: np.zeros(nobj, dtype=np.float32) for filt in bands}
+    sma  = np.zeros(nobj, dtype=np.float32)
+    for m in methods:
+        sel = method_arr == m
+        mflux, mivar, msma = precomputed[m]
+        for filt in bands:
+            flux[filt][sel] = mflux[filt][sel]
+            ivar[filt][sel] = mivar[filt][sel]
+        sma[sel] = msma[sel]
+    return flux, ivar, sma
 
 
 # ---------------------------------------------------------------------------
@@ -1695,17 +1844,39 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  LARGESHIFT recomputed (threshold={MAXSHIFT_ARCSEC}"): '
                  f'{int(np.sum((ebit & _LARGESHIFT) != 0)):,d} objects flagged')
 
+    # Default ("nominal") photometry -- see DEFAULT_PHOT_METHOD above.
+    flux_method_arr = np.full(len(out), DEFAULT_PHOT_METHOD, dtype='U8')
+    flux_arrs, ivar_arrs, sma_flux = _default_photometry(out, all_bands, flux_method_arr)
+    for filt in all_bands:
+        out.add_column(Column(flux_arrs[filt], name=f'FLUX_{filt}', unit=u.nanomaggy))
+        out.add_column(Column(ivar_arrs[filt], name=f'FLUX_IVAR_{filt}', unit=u.nanomaggy**-2))
+    out.add_column(Column(sma_flux, name='SMA_FLUX', unit=u.arcsec))
+    out.add_column(Column(flux_method_arr, name='FLUX_REF'))
+
     # Apply column ordering
     out = _reorder_cols(out)
+
+    # Split off the full aperture/CoG photometry grid into ELLIPSEPHOT,
+    # keeping only the nominal FLUX_{band}/FLUX_IVAR_{band} in SGA2025.
+    ellipsephot_cols = ['SGAID'] + [c for c in ELLIPSEPHOT_COL_ORDER if c in out.colnames]
+    ellipsephot = out[ellipsephot_cols]
+    out = out[[c for c in out.colnames if c not in set(ELLIPSEPHOT_COL_ORDER)]]
+
+    # Duplicate SGAID as the leading TRACTOR column too (it's already
+    # present as REF_ID, by construction identical to SGAID), so the
+    # extension is self-describing if ever split off from SGA2025.
+    tractor.add_column(Column(np.asarray(beta['SGAID']), name='SGAID'), index=0)
 
     # --- Write output ----------------------------------------------------
     os.makedirs(outdir, exist_ok=True)
     version = SGA_version(catalog=True)
     outpath = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
     vals, names, units = table_to_fitsio(out)
+    ephot_vals, ephot_names, ephot_units = table_to_fitsio(ellipsephot)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(ephot_vals, names=ephot_names, units=ephot_units, extname='ELLIPSEPHOT')
         F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
     log.info(f'  Wrote {outpath}')
 
@@ -1801,15 +1972,17 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 GOOD_BANDS = ['G', 'R', 'I', 'Z']
 
 def merge_regions(outdir, lines=None):
-    """Merge the per-region SGA2025-{region}-{version}.fits catalogs into a
-    single SGA2025-{version}.fits catalog.
+    """Merge the per-region SGA2025-{region}-{version}.fits catalogs (each
+    with SGA2025/ELLIPSEPHOT/TRACTOR extensions) into a single
+    SGA2025-{version}.fits catalog with the same three extensions.
 
     Objects with data in both regions (REGION has both dr11-south and
     dr11-north bits set) are deduplicated by keeping the row with more
-    "good" bands (FMASKED_AP00_{band} < 0.5 for band in GOOD_BANDS). Ties
-    are broken by preferring whichever side has a good r-band when only
-    one does, then by defaulting to dr11-south -- dr11-north's z-band is
-    substantially worse, so ties should favor south in nearly all cases.
+    "good" bands (ELLIPSEPHOT's FMASKED_AP00_{band} < 0.5 for band in
+    GOOD_BANDS). Ties are broken by preferring whichever side has a good
+    r-band when only one does, then by defaulting to dr11-south --
+    dr11-north's z-band is substantially worse, so ties should favor south
+    in nearly all cases.
 
     Objects whose REGION indicates both regions but which appear as a lone
     row (no counterpart in the other region -- some pixels overlap the
@@ -1830,23 +2003,28 @@ def merge_regions(outdir, lines=None):
 
     emit('=== merging dr11-south + dr11-north ===')
 
-    regions  = ['dr11-south', 'dr11-north']
-    cats     = {}
-    tractors = {}
+    regions      = ['dr11-south', 'dr11-north']
+    cats         = {}
+    ellipsephots = {}
+    tractors     = {}
     for region in regions:
         path = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
         emit(f'  Loading {path}')
-        cats[region]     = Table(fitsio.read(path, ext='SGA2025'))
-        tractors[region] = Table(fitsio.read(path, ext='TRACTOR'))
+        cats[region]         = Table(fitsio.read(path, ext='SGA2025'))
+        ellipsephots[region] = Table(fitsio.read(path, ext='ELLIPSEPHOT'))
+        tractors[region]     = Table(fitsio.read(path, ext='TRACTOR'))
 
     src = np.concatenate([
         np.full(len(cats[region]), REGIONBITS[region], dtype=np.int16)
         for region in regions
     ])
-    cat     = vstack([cats[r]     for r in regions], join_type='exact')
-    tractor = vstack([tractors[r] for r in regions], join_type='exact')
-    assert len(cat) == len(tractor)
+    cat         = vstack([cats[r]         for r in regions], join_type='exact')
+    ellipsephot = vstack([ellipsephots[r] for r in regions], join_type='exact')
+    tractor     = vstack([tractors[r]     for r in regions], join_type='exact')
+    assert len(cat) == len(ellipsephot) == len(tractor)
+    assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(ellipsephot['SGAID']))
     assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(tractor['REF_ID']))
+    assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(tractor['SGAID']))
 
     n_south, n_north = len(cats['dr11-south']), len(cats['dr11-north'])
     emit(f'  {n_south:,d} dr11-south + {n_north:,d} dr11-north = {len(cat):,d} rows before dedup')
@@ -1872,8 +2050,8 @@ def merge_regions(outdir, lines=None):
     both = (region_col & REGIONBITS['dr11-south'] != 0) & (region_col & REGIONBITS['dr11-north'] != 0)
     ngood = np.zeros(len(cat), dtype=np.int8)
     for b in GOOD_BANDS:
-        ngood += (np.asarray(cat[f'FMASKED_AP00_{b}']) < 0.5).astype(np.int8)
-    rgood = np.asarray(cat['FMASKED_AP00_R']) < 0.5
+        ngood += (np.asarray(ellipsephot[f'FMASKED_AP00_{b}']) < 0.5).astype(np.int8)
+    rgood = np.asarray(ellipsephot['FMASKED_AP00_R']) < 0.5
 
     keep = np.ones(len(cat), dtype=bool)
     n_dup = n_south_win = n_north_win = n_tie_rband = n_tie_south = 0
@@ -1901,16 +2079,19 @@ def merge_regions(outdir, lines=None):
     emit(f'    tied on good bands, resolved by r-band: {n_tie_rband:,d}')
     emit(f'    tied on good bands and r-band, defaulted to south: {n_tie_south:,d}')
 
-    merged         = _reorder_cols(cat[keep])
-    merged_tractor = tractor[keep]
+    merged             = _reorder_cols(cat[keep])
+    merged_ellipsephot = _reorder_cols(ellipsephot[keep], order=['SGAID'] + ELLIPSEPHOT_COL_ORDER)
+    merged_tractor     = tractor[keep]
     emit(f'  {len(merged):,d} galaxies in merged catalog')
 
     # --- Write output --------------------------------------------------
     outpath = os.path.join(outdir, f'SGA2025-{version}.fits')
     vals, names, units = table_to_fitsio(merged)
+    ephot_vals, ephot_names, ephot_units = table_to_fitsio(merged_ellipsephot)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(merged_tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(ephot_vals, names=ephot_names, units=ephot_units, extname='ELLIPSEPHOT')
         F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
     emit(f'  Wrote {outpath}')
 

@@ -783,7 +783,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
                          minmult, maxmult, test_bricks=test_bricks)
 
 
-def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
+def read_sga_sample(region=None, tractor=False, ellipsephot=False, mindiam=0., maxdiam=1e3,
                     galaxylist=None, first=None, last=None, no_groups=False,
                     minmult=None, maxmult=None, lvd=False, version=None, beta=False,
                     verbose=False):
@@ -796,7 +796,9 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
     of the (also-written, non-deduplicated) per-region files.
 
     Returns the ELLIPSE extension by default, or the row-matched TRACTOR
-    extension when tractor=True.
+    extension when tractor=True, or the row-matched ELLIPSEPHOT extension
+    (the full aperture/curve-of-growth photometry grid, not carried in the
+    default SGA2025 extension) when ellipsephot=True.
 
     Parameters
     ----------
@@ -807,6 +809,10 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
         there is no merged beta catalog.
     tractor : :class:`bool`
         If True, return the TRACTOR extension instead of ELLIPSE.
+    ellipsephot : :class:`bool`
+        If True, return the row-matched ELLIPSEPHOT extension instead of
+        ELLIPSE. Mutually exclusive with tractor=True. Not available when
+        beta=True (no ELLIPSEPHOT extension in the beta catalog).
     mindiam, maxdiam : :class:`float`
         Minimum and maximum GROUP_DIAMETER in arcmin.
     galaxylist : :class:`str`, optional
@@ -835,6 +841,10 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
         All group members whose group has at least one object in sample.
 
     """
+    if tractor and ellipsephot:
+        raise ValueError('tractor and ellipsephot are mutually exclusive; '
+                         'call read_sga_sample separately for each')
+
     if beta:
         if region is None:
             raise ValueError('region is required when beta=True '
@@ -857,15 +867,28 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
                                        galaxylist, verbose, no_groups, lvd, region,
                                        mindiam, maxdiam, minmult, maxmult)
 
-    if not tractor:
+    if not tractor and not ellipsephot:
         return sample, fullsample
 
-    # Return the row-matched TRACTOR rows for the selected objects.
-    tractor_tbl = Table(fitsio.read(samplefile, ext='TRACTOR', upper=True))
-    sgaid_to_row = {int(s): i for i, s in enumerate(tractor_tbl['REF_ID'])}
-    tractor_sample     = tractor_tbl[[sgaid_to_row[int(s)] for s in sample['SGAID']]]
-    tractor_fullsample = tractor_tbl[[sgaid_to_row[int(s)] for s in fullsample['SGAID']]]
-    return tractor_sample, tractor_fullsample
+    if ellipsephot:
+        if beta:
+            raise ValueError('ellipsephot is not available for beta catalogs '
+                             '(no ELLIPSEPHOT extension)')
+        extra_ext = 'ELLIPSEPHOT'
+    else:
+        extra_ext = 'TRACTOR'
+
+    # The final-release TRACTOR extension (like ELLIPSEPHOT) carries a
+    # leading SGAID column duplicating REF_ID; the pre-release beta TRACTOR
+    # extension predates that and only has REF_ID.
+    extra_key = 'REF_ID' if (extra_ext == 'TRACTOR' and beta) else 'SGAID'
+
+    # Return the row-matched TRACTOR/ELLIPSEPHOT rows for the selected objects.
+    extra_tbl = Table(fitsio.read(samplefile, ext=extra_ext, upper=True))
+    sgaid_to_row = {int(s): i for i, s in enumerate(extra_tbl[extra_key])}
+    extra_sample     = extra_tbl[[sgaid_to_row[int(s)] for s in sample['SGAID']]]
+    extra_fullsample = extra_tbl[[sgaid_to_row[int(s)] for s in fullsample['SGAID']]]
+    return extra_sample, extra_fullsample
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
