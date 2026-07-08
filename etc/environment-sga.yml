@@ -35,6 +35,7 @@ dependencies:
   - photutils
   - healpy
   - seaborn
+  - scikit-learn
   # Jupyter kernel support
   - ipykernel
   - ipython

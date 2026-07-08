@@ -20,6 +20,7 @@ dependencies = [
     "scipy",
     "photutils",
     "pydl",
+    "scikit-learn",
 ]
 
 [project.optional-dependencies]
