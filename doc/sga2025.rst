@@ -368,8 +368,7 @@ into the groups below.
      - Adopted distance (Mpc; 0 = no measurement)
    * - ``DIST_IVAR``
      - float32
-     - Inverse variance of adopted distance (Mpc\ :sup:`−2`; 0 = no measurement
-       or no formal uncertainty reported)
+     - Inverse variance of adopted distance (Mpc\ :sup:`−2`; 0 = no measurement)
    * - ``DIST_REF``
      - str10
      - Source of adopted distance: ``NED_DIRECT``, ``LVD``, ``NED``, or ``ZCOSMO``
@@ -426,16 +425,16 @@ into the groups below.
      - Bare group name (= on-disk directory name)
    * - ``GROUP_MULT``
      - int16
-     - Number of group members
+     - Group multiplicity (i.e., number of group members)
    * - ``GROUP_PRIMARY``
      - bool
-     - ``True`` for the primary (largest) group member
+     - ``True`` for the primary (largest) group member based on the *initial* diameter
    * - ``GROUP_RA``, ``GROUP_DEC``
      - float64
-     - Group centroid coordinates (deg)
+     - Diameter-weighted group centroid coordinates (deg)
    * - ``GROUP_DIAMETER``
      - float32
-     - Diameter of smallest enclosing circle (arcmin)
+     - Angular diameter of the full group (arcmin)
 
 **Fitted geometry**
 
@@ -475,8 +474,9 @@ into the groups below.
      - Optical half-light semi-major axis ± uncertainty, from the
        curve-of-growth fit (arcsec); IR/UV bands are in ``ELLIPSEPHOT``
 
-**Nominal photometry** (default aperture/method; see ``ELLIPSEPHOT`` for the
-full aperture grid and curve-of-growth fits)
+**Nominal photometry** (default aperture/method; see the
+``ELLIPSEPHOT`` HDU for the full aperture grid and curve-of-growth
+fits)
 
 .. list-table::
    :header-rows: 1
@@ -613,7 +613,7 @@ and ``Z_IVAR_SDSS`` are 0; string columns are blank.
        of 100 km/s is assumed. Set to 0 only when no NED redshift exists.
    * - ``Z_REF_NED``
      - str
-     - NED literature reference for the redshift
+     - NED reference for the redshift
    * - ``DIST_NED``
      - float32
      - NED distance (Mpc; 0 = no NED distance)
@@ -624,7 +624,7 @@ and ``Z_IVAR_SDSS`` are 0; string columns are blank.
    * - ``DIST_NED_DIRECT``
      - float32
      - NED "gold-tier" direct distance, from a single high-precision
-       literature measurement (Mpc; 0 = none available)
+       measurement from the literature (Mpc; 0 = none available)
    * - ``DIST_IVAR_NED_DIRECT``
      - float32
      - Inverse variance of ``DIST_NED_DIRECT`` (Mpc\ :sup:`−2`; 0 if no
@@ -992,8 +992,8 @@ fractional floor rather than ``DIST_IVAR = 0``.
 
 .. note::
 
-   Gold-tier method abbreviations, in priority order, with their typical
-   distance-modulus uncertainty (mag) inferred from the literature values
+   Gold-tier method abbreviations, in priority order, with their
+   typical distance-modulus uncertainty (mag) inferred from the values
    compiled in NED:
 
    .. list-table::
@@ -1272,7 +1272,7 @@ internal resolution.
      - 1
      - Any two measured redshifts (LVD, DESI, SDSS, NED) differ by more
        than 1000 km/s in the rest frame. Deliberately sensitive -- a coarse
-       literature NED redshift can exceed this against a precise DESI/SDSS
+       NED redshift can exceed this against a precise DESI/SDSS
        spectrum that is otherwise fine, so this bit alone does not imply
        the adopted redshift is wrong
    * - ``NED_SUSPECT``
