@@ -129,6 +129,14 @@ unchanged. All three set Z_FLAG's VI_REVIEWED bit and clear any other Z_FLAG bit
 (the issue that triggered VI is resolved). Rows with a blank VI_STATUS are
 skipped, so a partially-completed worksheet can be applied repeatedly.
 
+Z_PHOT (optional photometric redshift, --photoz-catalog)
+-----------------------------------------------------------
+--photoz-catalog points at SGA2025-photoz-{version}.fits (see SGA2025-photoz
+and py/SGA/photoz.py), matched by SGAID to fill Z_PHOT/Z_PHOT_IVAR
+(Z_PHOT_IVAR = 1/Z_PHOT_ERR**2). This never touches the adopted Z/Z_IVAR/
+Z_REF -- Z_PHOT is a separate, machine-learning-derived estimate, only used
+(see below) to fill in Z_COSMO for objects with no spectroscopic redshift.
+
 Z_COSMO (peculiar-velocity-corrected redshift)
 -----------------------------------------------
 For every object with Z_IVAR > 0, the adopted (heliocentric) Z is converted
@@ -143,6 +151,14 @@ Beyond 20,000 km/s -- outside the reconstructions' domain -- Z_COSMO is just
 the CMB-frame redshift, with Z_COSMO_IVAR carried over unchanged from Z_IVAR.
 If pvhub is not installed, Z_COSMO falls back to the CMB-frame redshift
 (no peculiar-velocity correction) for all objects.
+
+For objects with no spectroscopic Z (Z_IVAR=0) but a usable Z_PHOT, Z_COSMO
+falls back further to the CMB-frame-converted Z_PHOT, with Z_COSMO_IVAR
+carried over unchanged from Z_PHOT_IVAR -- no pvhub correction is attempted
+here, since Z_PHOT's own scatter (photo-z NMAD ~0.01, i.e. a few thousand
+km/s) is far larger than any peculiar-velocity correction pvhub could
+provide, so querying it would add noise rather than remove it. This in turn
+means the Hubble-flow DIST tier below now also covers Z_PHOT-only objects.
 
 Sentinels
 ---------
@@ -203,7 +219,8 @@ SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/
   --outdir=/Users/ioannis/research/projects/SGA/2025/public \
   --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv \
   --vi-redshifts=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/vi-redshifts.csv \
-  --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits
+  --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits \
+  --photoz-catalog=/Users/ioannis/research/projects/SGA/2025/photoz/SGA2025-photoz-v1.0.fits
 
 """
 import os
@@ -437,6 +454,8 @@ COL_ORDER = [
     # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
     'DIST', 'DIST_IVAR', 'DIST_REF', 'DIST_METHOD',
+    # --- Photometric redshift (optional, see --photoz-catalog) ---
+    'Z_PHOT', 'Z_PHOT_IVAR',
     # --- Peculiar-velocity-corrected redshift (pvhub) ---
     'Z_COSMO', 'Z_COSMO_IVAR',
     # --- Group finding ---
@@ -684,6 +703,16 @@ DIST_COLS = [
 LVD_Z_COLS = [
     ('Z_LVD',      np.float64, None),
     ('Z_IVAR_LVD', np.float64, None),
+]
+
+# Photometric redshift (optional external input -- see --photoz-catalog),
+# from bin/SGA2025-photoz's random-forest model (py/SGA/photoz.py). 0.
+# sentinel (Z_PHOT_IVAR=0) when --photoz-catalog isn't given or an object
+# has no match there. Used only to fill in Z_COSMO for objects with no
+# spectroscopic Z (Z_IVAR=0); never overwrites Z/Z_IVAR/Z_REF themselves.
+PHOT_COLS = [
+    ('Z_PHOT',      np.float64, None),
+    ('Z_PHOT_IVAR', np.float64, None),
 ]
 
 # Peculiar-velocity-corrected ("cosmological") redshift, from pvhub. Z_COSMO
@@ -1020,7 +1049,7 @@ def _default_photometry(tbl, bands, method_arr):
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                  desi_max_sep, lvd_catalog=None, parent_nocuts=None,
                  ned_override_zmin=0.3, vi_redshifts=None, lines=None, h0=70.,
-                 dist_ivar_floor=0.15):
+                 dist_ivar_floor=0.15, photoz_catalog=None):
     def emit(msg=''):
         print(msg)
         if lines is not None:
@@ -1185,6 +1214,31 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         is_lvd      = (beta['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
         log.info(f'  LVD catalog: {len(lvd):,d} entries; '
                  f'{int(np.sum(is_lvd)):,d} LVD objects in SGA sample')
+
+    # --- Photometric redshift (optional; from bin/SGA2025-photoz) ----------
+    # Matched by SGAID; Z_PHOT_IVAR = 1/Z_PHOT_ERR**2 (0. sentinel when the
+    # catalog isn't given, an object has no match, or Z_PHOT_ERR isn't
+    # usable). Only ever used downstream to fill in Z_COSMO for objects with
+    # no spectroscopic Z -- never touches Z/Z_IVAR/Z_REF.
+    phot_arrs = {
+        'Z_PHOT':      np.zeros(n, np.float64),
+        'Z_PHOT_IVAR': np.zeros(n, np.float64),
+    }
+    if photoz_catalog:
+        log.info(f'  Loading photo-z catalog {photoz_catalog}')
+        pz          = fitsio.read(photoz_catalog, ext='PHOTOZ')
+        pz_order    = np.argsort(pz['SGAID'])
+        pz_sgaid    = pz['SGAID'][pz_order]
+        beta_sgaid  = np.asarray(beta['SGAID'])
+        pos         = np.clip(np.searchsorted(pz_sgaid, beta_sgaid), 0, len(pz_sgaid) - 1)
+        matched     = pz_sgaid[pos] == beta_sgaid
+        prows       = pz[pz_order][pos]
+        zphot       = np.asarray(prows['Z_PHOT'],     dtype=np.float64)
+        zphot_err   = np.asarray(prows['Z_PHOT_ERR'], dtype=np.float64)
+        valid       = matched & np.isfinite(zphot) & np.isfinite(zphot_err) & (zphot_err > 0.)
+        phot_arrs['Z_PHOT'][valid]      = zphot[valid]
+        phot_arrs['Z_PHOT_IVAR'][valid] = 1. / zphot_err[valid]**2
+        log.info(f'  Photo-z catalog: {int(np.sum(valid)):,d}/{n:,d} objects matched')
 
     # --- VI worksheet (manual redshift overrides; see SGA2025-qa-redshifts) -
     vi_lookup = load_vi_redshifts(vi_redshifts)
@@ -1638,10 +1692,29 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  Z_COSMO: {n_has_z:,d}/{n:,d} objects with Z_IVAR>0, '
                  f'{n_pvhub:,d} within pvhub domain (v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s)')
 
+    # --- Z_COSMO fallback, objects with no spectroscopic Z: photo-z --------
+    # No pvhub peculiar-velocity correction here -- Z_PHOT's own scatter
+    # (photo-z NMAD ~0.011, i.e. ~3300 km/s) swamps any flow-field correction
+    # (~150-500 km/s), and querying pvhub with such an imprecise redshift
+    # would inject noise rather than remove it. Same treatment as objects
+    # beyond pvhub's domain: CMB-frame redshift only, with Z_COSMO_IVAR
+    # carried over unchanged (here, from Z_PHOT_IVAR rather than Z_IVAR).
+    has_phot_only = (~has_z) & (phot_arrs['Z_PHOT_IVAR'] > 0.)
+    n_phot_only   = int(np.sum(has_phot_only))
+    if n_phot_only:
+        ra_p    = np.array(beta['RA'])[has_phot_only]
+        dec_p   = np.array(beta['DEC'])[has_phot_only]
+        zphot_p = phot_arrs['Z_PHOT'][has_phot_only]
+        cosmo_arrs['Z_COSMO'][has_phot_only]      = _helio_to_cmb_z(ra_p, dec_p, zphot_p)
+        cosmo_arrs['Z_COSMO_IVAR'][has_phot_only] = phot_arrs['Z_PHOT_IVAR'][has_phot_only]
+    log.info(f'  Z_COSMO: {n_phot_only:,d}/{n:,d} additional objects filled from Z_PHOT '
+             '(no spectroscopic Z; no peculiar-velocity correction applied)')
+
     # --- Adopted distance, 4th tier: Hubble flow from Z_COSMO (H0=h0) ------
     # Only fills objects that got nothing from NED_DIRECT/LVD/NED above and
-    # have a usable Z_COSMO; objects with no redshift at all (Z_IVAR=0 ->
-    # Z_COSMO=0) still get no distance.
+    # have a usable Z_COSMO -- including, now, objects whose only redshift is
+    # Z_PHOT (see the Z_COSMO fallback above). Objects with no redshift of
+    # any kind (spectroscopic or photometric) still get no distance here.
     zcosmo      = cosmo_arrs['Z_COSMO']
     zcosmo_ivar = cosmo_arrs['Z_COSMO_IVAR']
     use_hflow = (dist_arrs['DIST'] <= 0.) & (zcosmo > 0.) & (zcosmo_ivar > 0.)
@@ -1818,6 +1891,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # LVD redshifts
     for name, dtype, unit in LVD_Z_COLS:
         out.add_column(Column(lvd_z_arrs[name], name=name, unit=unit))
+
+    # Photometric redshift (optional; see --photoz-catalog)
+    for name, dtype, unit in PHOT_COLS:
+        out.add_column(Column(phot_arrs[name], name=name, unit=unit))
 
     # Peculiar-velocity-corrected ("cosmological") redshift
     for name, dtype, unit in COSMO_COLS:
@@ -2151,6 +2228,11 @@ def main():
                              'DIST_IVAR wherever the source reported no uncertainty (most '
                              'commonly LVD); empirically calibrated to the LVD-vs-gold-tier '
                              'agreement (default: 0.15)')
+    parser.add_argument('--photoz-catalog',
+                        help='Path to SGA2025-photoz-{version}.fits (see SGA2025-photoz); '
+                             'matched by SGAID to fill Z_PHOT/Z_PHOT_IVAR, and used to fill '
+                             'Z_COSMO (and, in turn, the Hubble-flow DIST) for objects with '
+                             'no spectroscopic Z')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
@@ -2173,7 +2255,8 @@ def main():
                      parent_nocuts=args.parent_nocuts,
                      ned_override_zmin=args.ned_override_zmin,
                      vi_redshifts=args.vi_redshifts, lines=lines, h0=args.h0,
-                     dist_ivar_floor=args.dist_ivar_floor)
+                     dist_ivar_floor=args.dist_ivar_floor,
+                     photoz_catalog=args.photoz_catalog)
 
     if args.region is None:
         merge_regions(args.outdir, lines=lines)

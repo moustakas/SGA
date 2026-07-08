@@ -37,11 +37,15 @@ from SGA.SGA import Z_FLAG
 from SGA.coadds import REGIONBITS
 from SGA.logger import log
 
-# Photometric bands used to build consecutive colors (g-r, r-i, i-z,
-# W1-W2). Includes both optical neighbors of r (g and i) so that objects
-# missing FLUX_R (~2% of the sample) still get a usable adjacent color
-# instead of losing the whole g/r/i/z chain.
-FEATURE_BANDS = ['G', 'R', 'I', 'Z', 'W1', 'W2']
+# Photometric bands used to build consecutive colors (NUV-g, g-r, r-i,
+# i-z, z-W1, W1-W2). Includes both optical neighbors of r (g and i) so
+# that objects missing FLUX_R (~2% of the sample) still get a usable
+# adjacent color instead of losing the whole g/r/i/z chain. NUV is
+# included (76% coverage) since it measurably improves CV performance
+# (NMAD 0.01137->0.01108, checked against the SGA2025-v1.0 sample); FUV
+# was tested too but adds nothing on top of NUV (62% coverage, NMAD
+# 0.01108->0.01107) so it's left out.
+FEATURE_BANDS = ['NUV', 'G', 'R', 'I', 'Z', 'W1', 'W2']
 
 # Priority order for the single-band "apparent brightness"/surface-brightness
 # magnitude: r is usually best-measured, but when it's missing i covers far
@@ -126,7 +130,7 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
         Table with ``FLUX_{band}`` for each of ``bands``, plus ``REGION``,
         ``D26``, ``BA``, ``EBV`` (e.g. from :func:`SGA.SGA.read_sga_sample`).
     bands : :class:`list` of :class:`str`
-        Bands to form consecutive colors from (default g,r,i,z,W1,W2).
+        Bands to form consecutive colors from (default NUV,g,r,i,z,W1,W2).
     brightness_bands : :class:`list` of :class:`str`
         Priority-ordered fallback bands for the single apparent-magnitude
         and surface-brightness features (default r, then i, then g).
