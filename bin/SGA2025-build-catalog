@@ -156,12 +156,26 @@ For objects with no usable Z_COSMO from the adopted Z -- either no
 spectroscopic Z at all (Z_IVAR=0), or a real spec-z whose resolved Z_COSMO
 still came out <=0 (common for very nearby dwarfs/cluster members, e.g.
 Virgo/Fornax, where peculiar velocity swamps the tiny Hubble-flow signal) --
-Z_COSMO falls back further to the CMB-frame-converted Z_PHOT, with
-Z_COSMO_IVAR carried over unchanged from Z_PHOT_IVAR. No pvhub correction is
-attempted here, since Z_PHOT's own scatter (photo-z NMAD ~0.01, i.e. a few
-thousand km/s) is far larger than any peculiar-velocity correction pvhub
-could provide, so querying it would add noise rather than remove it. This in
-turn means the Hubble-flow DIST tier below now also covers these objects.
+two fallbacks are tried in order:
+
+  1. An independently-known distance (NED_DIRECT/LVD/NED -- not itself
+     derived from Z_COSMO), inverted to its equivalent pure-Hubble-flow
+     redshift via the fiducial cosmology in SGA.cosmo (see that module to
+     change the assumed cosmology). Real distance measurements are trusted
+     over the redshift chain exactly where pvhub struggles most. Only
+     objects whose Z_COSMO is otherwise unusable get this treatment -- a
+     precise spectroscopic Z_COSMO is never overridden just because a
+     (possibly less precise, or for NED's compiled mean, occasionally
+     circular) distance also happens to exist.
+  2. Otherwise, the CMB-frame-converted Z_PHOT, with Z_COSMO_IVAR carried
+     over unchanged from Z_PHOT_IVAR. No pvhub correction is attempted
+     here, since Z_PHOT's own scatter (photo-z NMAD ~0.01, i.e. a few
+     thousand km/s) is far larger than any peculiar-velocity correction
+     pvhub could provide, so querying it would add noise rather than
+     remove it.
+
+Either fallback in turn means the Hubble-flow DIST tier below now also
+covers these objects.
 
 Sentinels
 ---------
@@ -248,6 +262,8 @@ except ImportError:
     get_models = None
 
 from SGA.util import C_LIGHT
+from SGA.cosmo import (luminosity_distance, luminosity_distance_derivative,
+                       redshift_at_luminosity_distance)
 from SGA.SGA import (read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS,
                      NED_Z_FLAG, Z_FLAG)
 from SGA.geometry import choose_geometry
@@ -687,7 +703,7 @@ ADOPTED_COLS = [
 ]
 
 # Adopted distance columns. Priority: gold-tier NED_DIRECT > LVD > NED
-# (blended mean) > ZCOSMO (Hubble-flow from Z_COSMO, see --h0). DIST_REF is
+# (blended mean) > ZCOSMO (Hubble-flow from Z_COSMO, via SGA.cosmo). DIST_REF is
 # the coarse 4-way source tag; DIST_METHOD is the specific technique (gold
 # method name / LVD's own distance_measurement_method / 'NED_MEAN' /
 # 'HUBBLE_FLOW'), uppercased for consistent presentation across tiers.
@@ -1051,7 +1067,7 @@ def _default_photometry(tbl, bands, method_arr):
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                  desi_max_sep, lvd_catalog=None, parent_nocuts=None,
-                 ned_override_zmin=0.3, vi_redshifts=None, lines=None, h0=70.,
+                 ned_override_zmin=0.3, vi_redshifts=None, lines=None,
                  dist_ivar_floor=0.15, photoz_catalog=None):
     def emit(msg=''):
         print(msg)
@@ -1696,16 +1712,45 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  Z_COSMO: {n_has_z:,d}/{n:,d} objects with Z_IVAR>0, '
                  f'{n_pvhub:,d} within pvhub domain (v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s)')
 
-    # --- Z_COSMO fallback, no usable Z_COSMO from the adopted Z: photo-z ---
+    # --- Z_COSMO fallback, no usable Z_COSMO from the adopted Z ------------
     # Covers two cases: (1) no spectroscopic Z at all (Z_COSMO left at its
     # zero sentinel above), and (2) a real spec-z whose resolved Z_COSMO
     # still came out <=0 -- common for very nearby dwarfs/cluster members
     # (e.g. Virgo/Fornax) where peculiar velocity swamps the tiny Hubble-flow
-    # signal. Checked empirically against the SGA2025-v1.0 sample: of the
-    # objects with a real Z but Z_COSMO<=0 and no direct DIST, only 45/131
-    # recover using the plain CMB-frame Z (i.e. just dropping the pvhub
-    # correction); falling back to Z_PHOT instead recovers all of them.
+    # signal. Two fallback sources, tried in priority order:
     #
+    #   1. An independently-known distance (NED_DIRECT/LVD/NED -- i.e. not
+    #      itself derived from Z_COSMO), inverted via the fiducial cosmology
+    #      (SGA.cosmo) to its equivalent pure-Hubble-flow redshift. This is
+    #      exactly the regime where pvhub struggles most (peculiar velocity
+    #      dominates a tiny/negative recession velocity), so a real distance
+    #      measurement is trusted over the redshift chain. Deliberately
+    #      *not* applied to every object with a known distance, only to
+    #      those whose Z_COSMO is otherwise unusable -- checked against the
+    #      SGA2025-v1.0 sample, ~49,000 objects have both a real
+    #      spec-z-based Z_COSMO already and an independent distance (mostly
+    #      NED's compiled mean), and overriding all of those would trade a
+    #      precise spectroscopic redshift for a less precise (and for
+    #      NED-mean, occasionally circular) distance-derived one for no
+    #      reason.
+    #   2. Z_PHOT (CMB-frame-converted, no pvhub correction -- see below),
+    #      when no independent distance exists either.
+    has_direct_dist = ((cosmo_arrs['Z_COSMO'] <= 0.) &
+                       np.isin(dist_arrs['DIST_REF'], ['NED_DIRECT', 'LVD', 'NED']) &
+                       (dist_arrs['DIST'] > 0.))
+    n_direct_dist = int(np.sum(has_direct_dist))
+    if n_direct_dist:
+        d_direct      = dist_arrs['DIST'][has_direct_dist].astype(np.float64)
+        d_direct_ivar = dist_arrs['DIST_IVAR'][has_direct_dist].astype(np.float64)
+        z_direct      = redshift_at_luminosity_distance(d_direct)
+        dDdz          = luminosity_distance_derivative(z_direct)
+        z_direct_ivar = np.where(d_direct_ivar > 0., d_direct_ivar * dDdz**2, 0.)
+        cosmo_arrs['Z_COSMO'][has_direct_dist]      = z_direct
+        cosmo_arrs['Z_COSMO_IVAR'][has_direct_dist] = z_direct_ivar
+    log.info(f'  Z_COSMO: {n_direct_dist:,d}/{n:,d} objects filled/replaced from an '
+             'independent distance (NED_DIRECT/LVD/NED), inverted via the fiducial '
+             'cosmology (SGA.cosmo)')
+
     # No pvhub peculiar-velocity correction here -- Z_PHOT's own scatter
     # (photo-z NMAD ~0.011, i.e. ~3300 km/s) swamps any flow-field correction
     # (~150-500 km/s), and querying pvhub with such an imprecise redshift
@@ -1721,36 +1766,40 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         cosmo_arrs['Z_COSMO'][needs_phot_fallback]      = _helio_to_cmb_z(ra_p, dec_p, zphot_p)
         cosmo_arrs['Z_COSMO_IVAR'][needs_phot_fallback] = phot_arrs['Z_PHOT_IVAR'][needs_phot_fallback]
     log.info(f'  Z_COSMO: {n_phot_fallback:,d}/{n:,d} additional objects filled/replaced from '
-             'Z_PHOT (no usable Z_COSMO from the adopted Z; no peculiar-velocity correction)')
+             'Z_PHOT (no usable Z_COSMO from the adopted Z or an independent distance; '
+             'no peculiar-velocity correction)')
 
-    # Anything left <=0 despite a fallback attempt means Z_PHOT itself was
-    # <=0 (e.g. a Local Group dwarf-like blueshift prediction, see
-    # py/SGA/photoz.py) and there was no direct DIST measurement either.
+    # Anything left <=0 despite both fallbacks means Z_PHOT itself was <=0
+    # (e.g. a Local Group dwarf-like blueshift prediction, see
+    # py/SGA/photoz.py) and there was no independent distance either.
     still_bad = (cosmo_arrs['Z_COSMO'] <= 0.) & (phot_arrs['Z_PHOT_IVAR'] > 0.)
     if np.any(still_bad):
         log.warning(f'  {int(np.sum(still_bad)):,d} objects still have Z_COSMO<=0 '
-                    'after the Z_PHOT fallback')
+                    'after both fallbacks')
 
-    # --- Adopted distance, 4th tier: Hubble flow from Z_COSMO (H0=h0) ------
+    # --- Adopted distance, 4th tier: exact Hubble-flow D_L from Z_COSMO ----
     # Only fills objects that got nothing from NED_DIRECT/LVD/NED above and
     # have a usable Z_COSMO -- including, now, objects whose Z_COSMO came
-    # from the Z_PHOT fallback above (no spec-z, or a spec-z whose Z_COSMO
-    # came out <=0). Objects with no usable redshift of any kind
-    # (spectroscopic or photometric) still get no distance here.
+    # from either fallback above. Uses the exact luminosity distance
+    # (SGA.cosmo) rather than the low-z linear approximation D=cz/H0: the
+    # two agree to <1% at z<0.01 but diverge to +7% at z=0.1, +15% at
+    # z=0.25, and +24% at z=0.5 (this sample's redshift ceiling) -- which
+    # matters for SED-derived luminosities/masses (propto D_L**2). Objects
+    # with no usable redshift of any kind still get no distance here.
     zcosmo      = cosmo_arrs['Z_COSMO']
     zcosmo_ivar = cosmo_arrs['Z_COSMO_IVAR']
     use_hflow = (dist_arrs['DIST'] <= 0.) & (zcosmo > 0.) & (zcosmo_ivar > 0.)
     n_hflow = int(np.sum(use_hflow))
     if n_hflow:
-        d_hflow    = C_LIGHT * zcosmo[use_hflow] / h0
-        # sigma_D = (c/H0) * sigma_z = (c/H0) / sqrt(Z_COSMO_IVAR)
-        # DIST_IVAR = 1/sigma_D**2 = H0**2 * Z_COSMO_IVAR / c**2
-        ivar_hflow = (h0**2) * zcosmo_ivar[use_hflow] / C_LIGHT**2
+        z_hflow    = zcosmo[use_hflow]
+        d_hflow    = luminosity_distance(z_hflow)
+        dDdz       = luminosity_distance_derivative(z_hflow)
+        ivar_hflow = zcosmo_ivar[use_hflow] / dDdz**2
         dist_arrs['DIST'][use_hflow]        = np.float32(d_hflow)
         dist_arrs['DIST_IVAR'][use_hflow]   = np.float32(ivar_hflow)
         dist_arrs['DIST_REF'][use_hflow]    = 'ZCOSMO'
         dist_arrs['DIST_METHOD'][use_hflow] = 'HUBBLE_FLOW'
-    log.info(f'  Hubble-flow distance (H0={h0:g} km/s/Mpc): {n_hflow:,d} objects')
+    log.info(f'  Hubble-flow distance (exact D_L, SGA.cosmo): {n_hflow:,d} objects')
 
     # --- Adopted DIST_IVAR floor: sources with no reported uncertainty ----
     # (most commonly LVD -- see the assessment in the distance-quality work)
@@ -2241,10 +2290,6 @@ def main():
     parser.add_argument('--vi-redshifts',
                         help='Path to a VI worksheet CSV (see SGA2025-qa-redshifts) applied '
                              'after the normal Z/Z_IVAR/Z_REF resolution')
-    parser.add_argument('--h0', type=float, default=70.,
-                        help='Hubble constant (km/s/Mpc) for the Hubble-flow distance '
-                             '(DIST_REF=ZCOSMO), adopted from Z_COSMO for objects with no '
-                             'NED_DIRECT/LVD/NED distance (default: 70)')
     parser.add_argument('--dist-ivar-floor', type=float, default=0.15,
                         help='Fractional distance-uncertainty floor applied to the adopted '
                              'DIST_IVAR wherever the source reported no uncertainty (most '
@@ -2276,7 +2321,7 @@ def main():
                      lvd_catalog=args.lvd_catalog,
                      parent_nocuts=args.parent_nocuts,
                      ned_override_zmin=args.ned_override_zmin,
-                     vi_redshifts=args.vi_redshifts, lines=lines, h0=args.h0,
+                     vi_redshifts=args.vi_redshifts, lines=lines,
                      dist_ivar_floor=args.dist_ivar_floor,
                      photoz_catalog=args.photoz_catalog)
 
