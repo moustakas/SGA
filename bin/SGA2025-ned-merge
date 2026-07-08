@@ -15,26 +15,94 @@ For each SGAID the resolution logic is:
        c. byname ERROR is empty AND BYNAME_SEP_ARCSEC <= threshold (clean match)
   3. Otherwise fall back to bypos overview data and set the appropriate flag bit(s).
 
-NED_FLAG bits
--------------
-  0x01  FLAG_LARGE_SEP    byname positional offset > threshold; used bypos unless
-                          name-confirmed (LVD or OBJNAME in byname CROSSIDS)
-  0x02  FLAG_BYNAME_FAIL  byname error / no-match               ->  used bypos
-  0x04  FLAG_BYPOS_FAIL   bypos also error / no-match           ->  result may be incomplete
-  0x08  FLAG_Z_SUSPECT    adopted NED_Z > --z-swap-threshold     ->  alternates considered
-  0x10  FLAG_Z_UNRESOLVED suspect but no confident replacement   ->  needs targeted VI
+NED_FLAG bits (cross-match quality -- whether/how byname or bypos resolved)
+-----------------------------------------------------------------------------
+  0x01  LARGE_SEP    byname positional offset > threshold; used bypos unless
+                      name-confirmed (LVD or OBJNAME in byname CROSSIDS)
+  0x02  BYNAME_FAIL  byname error / no-match               ->  used bypos
+  0x04  BYPOS_FAIL   bypos also error / no-match           ->  result may be incomplete
+
+NED_Z_FLAG bits (how NED's own default NED_Z was arrived at)
+----------------------------------------------------------------
+  0x01  Z_SUSPECT           adopted NED_Z > --z-swap-threshold     ->  alternates considered
+  0x02  Z_UNRESOLVED        suspect/missing/censored but no confident
+                            replacement                            ->  needs targeted VI
+  0x04  Z_MISSING           no NED_Z at all in step 1              ->  adopted from
+                            RedshiftsOfObject instead (see below)
+  0x08  Z_CENSORED_PHOTOZ   adopted NED_Z's matched RedshiftsOfObject
+                            measurement has NED_Z_TECHNIQUE='P' (photometric)
+                                                                   ->  discarded,
+                            alternates considered
+  0x10  Z_CENSORED_SDSS     adopted NED_Z came from an SDSS-compilation
+                            reference (SDSS_REF_RE)                ->  discarded,
+                            alternates considered
+
+Both bitmasks are defined in SGA.SGA (NED_FLAG, NED_Z_FLAG) -- along with
+Z_FLAG, SGA's own adopted-redshift resolution across all sources, set in
+SGA2025-build-catalog. Three different questions, three different bitmasks;
+see SGA2025-build-catalog's docstring for how NED_Z_FLAG propagates into
+Z_FLAG when NED is the sole redshift measurement for an object.
 
 The bypos columns NED_NAME, SEPARATION_ARCSEC, and NMATCHES are always written
 regardless of which source was chosen, for reference.
 
 Redshift override (optional --redshifts-glob input)
 ----------------------------------------------------
-NED occasionally assigns a bogus high-z "fiducial" redshift to an object (e.g.
-SDSS fiber contamination from a background source overlapping a nearby dwarf).
-When the adopted NED_Z exceeds --z-swap-threshold (default 0.4) and a
-RedshiftsOfObject query result is available for that SGAID (see
-SGA2025-ned-query --querytype redshifts), alternative measurements with
-z <= threshold are considered:
+This logic handles three distinct problems, all resolved against the full
+RedshiftsOfObject query result for the SGAID (see SGA2025-ned-query
+--querytype redshifts):
+
+  * Z_SUSPECT: NED occasionally assigns a bogus high-z "fiducial"
+    redshift to an object (e.g. SDSS fiber contamination from a background
+    source overlapping a nearby dwarf). Triggered when the adopted NED_Z
+    exceeds --z-swap-threshold (default 0.4).
+  * Z_MISSING: NED's own aggregated overview has no fiducial NED_Z at
+    all for the object (e.g. UGC 06451: the only overview redshift on file
+    is a stale/bogus WISE photo-z, but the object has no *default* NED_Z),
+    even though the full RedshiftsOfObject list has real measurements not
+    yet reflected in NED's own default. Triggered whenever NED_Z is missing,
+    regardless of --z-swap-threshold.
+  * Z_CENSORED_PHOTOZ / Z_CENSORED_SDSS: the adopted default is
+    discarded outright regardless of its numeric value, since a
+    plausible-looking z (e.g. 0.15, well under --z-swap-threshold) from a
+    known-unreliable or soon-to-be-superseded source would otherwise pass
+    through silently. The overview (byname/bypos) response used for the
+    default NED_Z does not itself carry a measurement technique, so this
+    match is made against the full RedshiftsOfObject list: the overview's
+    NED_Z is looked up by value (within --z-match-tol) in that object's full
+    measurement list, populating NED_Z_TECHNIQUE/NED_Z_QUALITY for *every*
+    NED-sourced object (not just censored/suspect/missing ones) as a
+    byproduct -- this is the "provenance" enrichment referred to elsewhere.
+      - Z_CENSORED_PHOTOZ: the matched measurement's NED_Z_TECHNIQUE is
+        'P' (photometric). Cross-matching the adopted NED_Z in
+        SGA2025-v1.0.fits against ned-redshifts-dr11-*.csv this way showed
+        ~92,737 objects (30% of all NED-sourced redshifts) are photometric,
+        the overwhelming majority (~92,236) from a single reference,
+        Bilicki et al. 2014's 2MASS Photometric Redshift catalog
+        ('2014ApJS..210....9B'). Because censorship is technique-based
+        rather than reference-based, the ~6,825 genuine spectroscopic
+        measurements folded into that same reference (NED_Z_TECHNIQUE='S')
+        are correctly kept. If no matching measurement is found (e.g.
+        --redshifts-glob missing for the region, or the default predates
+        the full-list query and doesn't match anything in it), technique is
+        unknown and this bit is never set -- graceful, conservative
+        degradation.
+      - Z_CENSORED_SDSS: the overview's own NED_Z_REF matches
+        SDSS_REF_RE -- NED's synthetic per-data-release SDSS compilation
+        bibcodes (e.g. '2016SDSSD.C...0000:'), not real literature
+        references, and not accompanied by SDSS's own ZWARNING. This check
+        does not depend on --redshifts-glob. These are superseded by
+        SGA2025-desi-dr1-match --sdss, which matches the sample directly
+        against specObj-dr17.fits with real ZWARNING; once that's wired
+        into SGA2025-build-catalog it takes priority over anything NED
+        reports for the same spectrum.
+    Censored candidates are also excluded from the alternates considered
+    below (by the same technique/reference tests), so the override logic
+    can't quietly re-adopt one via clustering.
+
+In all three cases, alternative measurements with z <= --z-swap-threshold are
+considered (also excluding any candidate that is itself photometric or
+SDSS-sourced):
   1. Candidates are grouped into clusters of mutually agreeing measurements
      (relative gap |dz|/(1+z) < --z-cluster-tol, default 0.01).
   2. If one cluster is strictly the largest (including the trivial case of a
@@ -42,13 +110,72 @@ z <= threshold are considered:
      -- ranked spectroscopic > photometric > other technique, then a clean
      quality flag over an uncertain ('?') one, then the most recent reference.
   3. Otherwise (tied clusters, i.e. genuinely disagreeing candidates) the
-     lowest-z candidate is adopted as a best guess and FLAG_Z_UNRESOLVED is
-     set. FLAG_Z_UNRESOLVED is also set (with no change to NED_Z) when there
+     lowest-z candidate is adopted as a best guess and Z_UNRESOLVED is
+     set. Z_UNRESOLVED is also set (with no change to NED_Z) when there
      are zero candidates at or below threshold.
-The original suspect value is preserved in NED_Z_ORIG; NED_Z_NCAND/NED_Z_NALT
-record the number of candidates and the size of the adopted cluster. This
-step is skipped gracefully (no flags set) when --redshifts-glob has no file
-for a region.
+For the Z_SUSPECT and Z_CENSORED_* cases, the original (suspect or
+censored) value is preserved in NED_Z_ORIG; for Z_MISSING, NED_Z_ORIG
+stays NaN since there was nothing to replace. NED_Z_NCAND/NED_Z_NALT record
+the number of candidates and the size of the adopted cluster in all cases
+where a replacement was sought. NED_Z_TECHNIQUE/NED_Z_QUALITY reflect
+whichever measurement is ultimately adopted (the original default, or the
+override's pick if one was found); if nothing is adopted (NED_Z left NaN),
+they describe the discarded default when one existed (e.g. a censored or
+unresolved-suspect value), and are blank for a genuinely unmeasured object.
+If NED_Z is missing and no candidates are found, NED_Z is left as NaN and no
+additional flag is set beyond any censorship bit already applied -- a
+genuinely unmeasured object (no censorship involved) is not flagged at all.
+The override attempt itself is skipped gracefully when --redshifts-glob has
+no file for a region, but Z_CENSORED_SDSS (reference-based, not
+dependent on the full measurement list) still applies.
+
+Direct distance override (optional --distances-glob input)
+------------------------------------------------------------
+NED's OverviewOfObject NED_DIST is a blended "mean" distance with no
+provenance. Where SGA2025-ned-query --querytype distances has queried the
+full DistancesOfObject measurement list for the SGAID, this picks out the
+single best individual measurement from a small set of high-precision
+"gold-tier" methods -- Cepheids, TRGB, PNLF, SBF, SNIa, SNII optical, GCLF,
+SNIa SDSS -- and reports it separately as NED_DIST_DIRECT /
+NED_DIST_DIRECT_UNC / NED_DIST_DIRECT_METHOD / NED_DIST_DIRECT_REF, without
+touching NED_DIST/NED_DIST_UNC at all. NED_DIST_DIRECT_UNC is in Mpc (like
+NED_DIST_UNC), propagated from the underlying NED_DISTMOD_UNC (mag) via
+sigma_D = D * ln(10)/5 * sigma_mu -- NED's DistancesOfObject response has no
+native Mpc-scale uncertainty for individual measurements, only the
+magnitude-space one. This list and priority order (highest
+first) was derived empirically from the median reported NED_DISTMOD_UNC
+across the full sample, not hand-picked:
+
+  Cepheids > TRGB > PNLF > SBF > SNIa > SNII optical > GCLF > SNIa SDSS
+
+(all <=0.27 mag median uncertainty, vs. >=0.40 mag for scaling-relation
+methods like Tully-Fisher/FP/D-Sigma/Faber-Jackson, which are deliberately
+excluded here -- NED's own blended mean is already a reasonable summary of
+those, and there's no single indirect method clearly worth preferring over
+it). Only ~2% of the population that currently falls back to NED_DIST has a
+gold-tier measurement at all, so most objects simply get blank/NaN
+NED_DIST_DIRECT* columns and are otherwise unaffected.
+
+For an SGAID with a gold-tier method present, the single measurement with
+the lowest NED_DISTMOD_UNC is adopted (rows with no reported uncertainty
+sort last, tie-broken by the most recent reference year -- the same idiom
+as the redshift override's _pick_best_measurement) -- unless that top
+method isn't independently replicated (fewer than MIN_CONFIDENT_REFS=3
+distinct references) *and* a lower-priority method is both confidently
+replicated and tightly self-consistent (every measurement within
+DIST_CLUSTER_TOL=15% of the group's median) *and* disagrees with the top
+method's value by more than that same tolerance -- in which case the
+lower-priority method's mean and sample standard deviation are adopted
+instead (NED_DIST_DIRECT_REF='MULTIPLE', no single bibcode applying to an
+averaged value). See resolve_distance_gold's docstring for a real example
+(SGAID 5053902 / UGC 9128: a single-reference, internally-inconsistent
+Cepheid pair is discarded in favor of an 8-reference TRGB consensus). This
+step only populates new columns; it does not change NED_DIST/NED_DIST_UNC
+or which DIST value SGA2025-build-catalog ultimately adopts.
+
+The override attempt is skipped gracefully when --distances-glob has no
+file for a region (existing NED_DIST/NED_DIST_UNC columns are unaffected
+either way).
 
 Outputs (written to --outdir)
 ------------------------------
@@ -63,9 +190,11 @@ Examples
 
   SGA2025-ned-merge --outdir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery
   SGA2025-ned-merge --outdir /path/to/nedquery --z-swap-threshold 0.4
+  SGA2025-ned-merge --outdir /path/to/nedquery --distances-glob ned-distances-{region}.csv
 
 """
 import os
+import re
 import csv
 import argparse
 import numpy as np
@@ -73,17 +202,29 @@ from astropy.table import Table
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
-from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS
+from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS, NED_FLAG, NED_Z_FLAG
 from SGA.logger import log
 
-# ---------------------------------------------------------------------------
-# Flag bits
-# ---------------------------------------------------------------------------
-FLAG_LARGE_SEP    = 0x01   # byname offset > threshold (may still use byname if name-confirmed)
-FLAG_BYNAME_FAIL  = 0x02   # byname error/no-match -> used bypos
-FLAG_BYPOS_FAIL   = 0x04   # bypos also error/no-match -> result incomplete
-FLAG_Z_SUSPECT    = 0x08   # adopted NED_Z > z-swap-threshold -> alternates considered
-FLAG_Z_UNRESOLVED = 0x10   # suspect but no confident replacement found -> needs VI
+# NED's synthetic per-data-release SDSS compilation bibcodes, e.g.
+# '2016SDSSD.C...0000:', '2003SDSS1.C...0000:' -- not real literature
+# references. Superseded by SGA2025-desi-dr1-match --sdss.
+SDSS_REF_RE = re.compile(r'^\d{4}SDSS')
+
+# High-precision direct distance methods, in priority order (index = rank).
+# Derived from the empirical median NED_DISTMOD_UNC across ned-distances-*.csv
+# (see the "Direct distance override" docstring section above); everything
+# else (Tully-Fisher, FP, D-Sigma, Faber-Jackson, etc., >=0.40 mag median
+# uncertainty) is deliberately excluded.
+DIST_GOLD_METHODS = ['Cepheids', 'TRGB', 'PNLF', 'SBF', 'SNIa',
+                      'SNII optical', 'GCLF', 'SNIa SDSS']
+
+# Cross-tier consistency check (resolve_distance_gold): a method with fewer
+# than this many distinct references isn't independently replicated, and
+# gets cross-checked against a lower-priority method instead of trusted
+# outright. Reused as the "tight cluster" / "agrees with" relative-distance
+# tolerance too, so there's one fewer magic number in the picture.
+MIN_CONFIDENT_REFS = 3
+DIST_CLUSTER_TOL   = 0.15
 
 # ---------------------------------------------------------------------------
 # Column type classification
@@ -96,10 +237,11 @@ F32_COLS = frozenset([
     'NED_POS_UNC_SMA', 'NED_POS_UNC_SMI', 'NED_POS_UNC_PA',
     'NED_DIST', 'NED_DIST_UNC', 'NED_DIAM', 'NED_DIAM_KPC',
     'SEPARATION_ARCSEC', 'BYNAME_SEP_ARCSEC',
+    'NED_DIST_DIRECT', 'NED_DIST_DIRECT_UNC',
 ])
 
 # int32: integer fields (SGAID uses int64, handled separately)
-I32_COLS = frozenset(['N_CROSSIDS', 'NMATCHES', 'NED_FLAG', 'NED_Z_NCAND', 'NED_Z_NALT'])
+I32_COLS = frozenset(['N_CROSSIDS', 'NMATCHES', 'NED_FLAG', 'NED_Z_FLAG', 'NED_Z_NCAND', 'NED_Z_NALT'])
 
 # OVERVIEW_FIELDS: columns present in both byname and bypos CSVs
 OVERVIEW_FIELDS = [
@@ -117,10 +259,11 @@ OVERVIEW_FIELDS = [
 OUT_COLS = (
     ['SGAID', 'OBJNAME',
      'NED_NAME', 'SEPARATION_ARCSEC', 'NMATCHES',
-     'BYNAME_SEP_ARCSEC', 'NED_SOURCE', 'NED_FLAG',
+     'BYNAME_SEP_ARCSEC', 'NED_SOURCE', 'NED_FLAG', 'NED_Z_FLAG',
      'NED_ERROR_BYNAME', 'NED_ERROR_BYPOS']
     + OVERVIEW_FIELDS
-    + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT']
+    + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT', 'NED_Z_TECHNIQUE', 'NED_Z_QUALITY']
+    + ['NED_DIST_DIRECT', 'NED_DIST_DIRECT_UNC', 'NED_DIST_DIRECT_METHOD', 'NED_DIST_DIRECT_REF']
 )
 
 
@@ -161,29 +304,65 @@ def _ival(s, missing=-1):
 def load_redshift_alternates(path):
     """Load a SGA2025-ned-query --querytype redshifts CSV.
 
-    Returns dict[int SGAID -> list of measurement dicts] built from
-    successful (ERROR == '') rows only, or {} if path is missing.
+    Returns (measurements, resolved):
+      measurements: dict[int SGAID -> list of measurement dicts] built from
+        successful (ERROR == '') rows only.
+      resolved: set of SGAIDs whose row has ERROR in ('', 'no_match') --
+        NED was queried and gave a definitive answer (real measurements, or
+        a genuine confirmation that it has none). SGAIDs entirely absent
+        from the file, or present with some other ERROR (e.g. 'parse_error',
+        a server hiccup that survived the query-time retry), are not
+        resolved -- they need to be requeried.
+
+    Both are empty if path is missing.
     """
-    out = {}
+    measurements = {}
+    resolved = set()
     if not os.path.exists(path):
-        return out
+        return measurements, resolved
     with open(path, newline='') as f:
         for row in csv.DictReader(f):
-            if row.get('ERROR', ''):
-                continue
             try:
                 sid = int(row['SGAID'])
-                z   = float(row['NED_Z'])
             except (KeyError, ValueError):
                 continue
-            out.setdefault(sid, []).append({
+            err = row.get('ERROR', '')
+            if err in ('', 'no_match'):
+                resolved.add(sid)
+            if err:
+                continue
+            try:
+                z = float(row['NED_Z'])
+            except (KeyError, ValueError):
+                continue
+            measurements.setdefault(sid, []).append({
                 'z':            z,
                 'unc_z':        _fval(row.get('NED_Z_UNC', ''), float),
                 'z_technique':  row.get('NED_Z_TECHNIQUE', ''),
                 'quality_flag': row.get('NED_Z_QUALITY', ''),
                 'reference':    row.get('NED_Z_REF', ''),
             })
-    return out
+    return measurements, resolved
+
+
+def _match_measurement(zval, measurements, tol):
+    """Find the RedshiftsOfObject measurement matching an overview NED_Z
+    value (by nearest z, within absolute `tol`), to recover its
+    NED_Z_TECHNIQUE/NED_Z_QUALITY -- fields the overview response itself
+    doesn't carry. Returns the measurement dict, or None if there is no
+    measurement list or no candidate within tolerance."""
+    if not measurements or np.isnan(zval):
+        return None
+    best = min(measurements, key=lambda m: abs(m['z'] - zval))
+    return best if abs(best['z'] - zval) < tol else None
+
+
+def _is_sdss_ref(reference):
+    return bool(SDSS_REF_RE.match(str(reference)))
+
+
+def _is_photoz(measurement):
+    return measurement is not None and str(measurement['z_technique']).strip().upper() == 'P'
 
 
 def _cluster_indices(zs, tol):
@@ -223,8 +402,9 @@ def _pick_best_measurement(indices, measurements):
 
 
 def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
-    """Pick a replacement for a suspect (> swap_threshold) adopted NED_Z from
-    the full list of RedshiftsOfObject measurements for one SGAID.
+    """Pick a replacement for a suspect (> swap_threshold), missing, or
+    censored adopted NED_Z from the full list of RedshiftsOfObject
+    measurements for one SGAID.
 
     Candidates (z <= swap_threshold) are grouped into clusters of mutually
     agreeing values. If one cluster is strictly the largest (including the
@@ -232,6 +412,10 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
     is adopted (confident). Otherwise -- tied clusters, i.e. genuinely
     disagreeing candidates -- the lowest-z candidate is adopted as a best
     guess and marked unresolved. Returns None if there are no candidates.
+
+    `measurements` is expected to already have censored (photometric or
+    SDSS-sourced) entries filtered out by the caller, so a censored value
+    can never be re-adopted here.
     """
     candidates = [m for m in measurements if m['z'] <= swap_threshold]
     if not candidates:
@@ -252,18 +436,147 @@ def resolve_redshift_override(measurements, swap_threshold, cluster_tol):
     m = candidates[best]
     return {
         'z': m['z'], 'unc_z': m['unc_z'], 'reference': m['reference'],
+        'technique': m['z_technique'], 'quality': m['quality_flag'],
         'unresolved': unresolved, 'n_candidates': len(candidates), 'n_cluster': maxsize,
     }
+
+
+def load_distance_alternates(path):
+    """Load a SGA2025-ned-query --querytype distances CSV.
+
+    Returns dict[int SGAID -> list of measurement dicts] built from
+    successful (ERROR == '') rows only, or {} if path is missing. Loads all
+    methods, not just DIST_GOLD_METHODS -- the gold-tier filter is applied
+    by resolve_distance_gold, not here.
+    """
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            if row.get('ERROR', ''):
+                continue
+            try:
+                sid  = int(row['SGAID'])
+                dist = float(row['NED_DIST'])
+            except (KeyError, ValueError):
+                continue
+            out.setdefault(sid, []).append({
+                'dist':      dist,
+                'unc':       _fval(row.get('NED_DISTMOD_UNC', ''), float),
+                'method':    row.get('NED_DIST_METHOD', '').strip(),
+                'reference': row.get('NED_DIST_REF', ''),
+            })
+    return out
+
+
+def _pick_best_distance(rows):
+    """Return the row with the lowest NED_DISTMOD_UNC (rows with no reported
+    uncertainty sort last, tie-broken by the most recent reference year --
+    same idiom as _pick_best_measurement), converted to a
+    dist/unc(Mpc)/method/reference dict. The selection ranking stays in
+    magnitude space (the astronomically meaningful precision metric), but
+    the returned 'unc' is converted to Mpc via the standard distance-modulus
+    propagation (sigma_D = D * ln(10)/5 * sigma_mu) -- 'unc' as loaded from
+    NED_DISTMOD_UNC is a mag, not a distance, and DIST_IVAR downstream needs
+    a real Mpc-scale uncertainty.
+    """
+    def rank(m):
+        has_unc = not np.isnan(m['unc'])
+        try:
+            year = -int(str(m['reference'])[:4])
+        except ValueError:
+            year = 0
+        return (0 if has_unc else 1, m['unc'] if has_unc else 0., year)
+
+    m = min(rows, key=rank)
+    unc_mag = m['unc']
+    unc_mpc = (m['dist'] * np.log(10.) / 5. * unc_mag) if not np.isnan(unc_mag) else np.float64('nan')
+    return {
+        'dist': m['dist'], 'unc': unc_mpc,
+        'method': m['method'], 'reference': m['reference'],
+    }
+
+
+def _distinct_refs(rows):
+    return {r['reference'] for r in rows}
+
+
+def _is_tight_cluster(rows, tol):
+    """True if every row's distance is within `tol` (relative) of the
+    group's median."""
+    ds  = [r['dist'] for r in rows]
+    med = np.median(ds)
+    return all(abs(d - med) / med <= tol for d in ds)
+
+
+def resolve_distance_gold(measurements):
+    """Pick the best gold-tier direct distance measurement for one SGAID,
+    or None if no DIST_GOLD_METHODS method is present.
+
+    Finds the highest-priority method (lowest DIST_GOLD_METHODS index)
+    present among `measurements` and picks its single best row (see
+    _pick_best_distance). If that top method has fewer than
+    MIN_CONFIDENT_REFS distinct references (i.e. isn't independently
+    replicated -- e.g. two measurements from the same single paper), it
+    can't be trusted outright: this looks for the first lower-priority
+    method that *is* confidently replicated (>= MIN_CONFIDENT_REFS distinct
+    references) and tightly self-consistent (_is_tight_cluster). If found
+    and it disagrees with the top method's candidate by more than
+    DIST_CLUSTER_TOL, the top method's value is discarded in favor of the
+    confident method's mean and sample standard deviation (reference
+    'MULTIPLE', since no single bibcode applies to an averaged value). If
+    the top method is already confidently replicated, or no confident
+    lower-priority alternative disagrees with it, behavior is unchanged:
+    the top method's own best single measurement is returned.
+
+    Real example (SGAID 5053902 / UGC 9128): the only 'Cepheids' data are
+    two rows from a single 1998 paper disagreeing with each other by
+    ~1 Mpc (6.05 vs. 7.05) -- 1 distinct reference, not confident. 'TRGB'
+    has 8 independent references tightly clustered around 2.27 Mpc
+    (std 0.10), matching LVD's own value (2.24) closely. The lone Cepheid
+    pick (7.05) disagrees with the TRGB cluster by ~210%, so TRGB's
+    mean/std is adopted instead.
+    """
+    gold = [m for m in measurements if m['method'] in DIST_GOLD_METHODS]
+    if not gold:
+        return None
+
+    by_method = {m: [r for r in gold if r['method'] == m]
+                 for m in {r['method'] for r in gold}}
+    present_ranks = sorted(DIST_GOLD_METHODS.index(m) for m in by_method)
+
+    method0   = DIST_GOLD_METHODS[present_ranks[0]]
+    rows0     = by_method[method0]
+    candidate = _pick_best_distance(rows0)
+
+    if len(_distinct_refs(rows0)) < MIN_CONFIDENT_REFS:
+        for frank in present_ranks[1:]:
+            fmethod = DIST_GOLD_METHODS[frank]
+            frows   = by_method[fmethod]
+            if (len(_distinct_refs(frows)) >= MIN_CONFIDENT_REFS
+                    and _is_tight_cluster(frows, DIST_CLUSTER_TOL)):
+                fdists = [r['dist'] for r in frows]
+                fmean  = float(np.mean(fdists))
+                if abs(candidate['dist'] - fmean) / fmean > DIST_CLUSTER_TOL:
+                    return {
+                        'dist': fmean, 'unc': float(np.std(fdists, ddof=1)),
+                        'method': fmethod, 'reference': 'MULTIPLE',
+                    }
+                break   # fallback agrees -- stop looking, keep top-tier candidate
+
+    return candidate
 
 
 # ---------------------------------------------------------------------------
 # Per-region merge
 # ---------------------------------------------------------------------------
-def merge_region(region, outdir, sep_threshold, redshifts_glob,
-                 z_swap_threshold, z_cluster_tol):
+def merge_region(region, outdir, sep_threshold, redshifts_glob, distances_glob,
+                 z_swap_threshold, z_cluster_tol, z_match_tol):
     byname_path    = os.path.join(outdir, f'ned-byname-{region}.csv')
     bypos_path     = os.path.join(outdir, f'ned-bypos-{region}.csv')
     redshifts_path = os.path.join(outdir, redshifts_glob.format(region=region))
+    distances_path = os.path.join(outdir, distances_glob.format(region=region))
     outpath        = os.path.join(outdir, f'ned-merged-{region}.fits')
 
     log.info(f'Loading {region}')
@@ -271,12 +584,20 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     bypos  = load_csv(bypos_path)
     log.info(f'  byname: {len(byname):,d} rows   bypos: {len(bypos):,d} rows')
 
-    redshift_alts = load_redshift_alternates(redshifts_path)
+    redshift_alts, redshift_resolved = load_redshift_alternates(redshifts_path)
+    redshifts_file_found = os.path.exists(redshifts_path)
     if redshift_alts:
         log.info(f'  redshift alternates: {len(redshift_alts):,d} SGAIDs from {redshifts_path}')
     else:
         log.info(f'  redshift alternates: {redshifts_path} not found or empty, '
                  'skipping z-override logic')
+
+    distance_alts = load_distance_alternates(distances_path)
+    if distance_alts:
+        log.info(f'  distance alternates: {len(distance_alts):,d} SGAIDs from {distances_path}')
+    else:
+        log.info(f'  distance alternates: {distances_path} not found or empty, '
+                 'skipping direct-distance override')
 
     _, cat  = read_sga_sample(region=region)
     sga_id  = cat['SGAID'].value
@@ -318,6 +639,7 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
 
     # Build output columns
     cols = {c: [] for c in OUT_COLS}
+    missing_redshift_sgaids = []
 
     for i in range(n):
         sid  = int(sga_id[i])
@@ -330,11 +652,11 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
 
         flag = 0
         if byname_err != '':
-            flag |= FLAG_BYNAME_FAIL
+            flag |= NED_FLAG['BYNAME_FAIL']
         elif np.isnan(byname_sep) or byname_sep > sep_threshold:
-            flag |= FLAG_LARGE_SEP
+            flag |= NED_FLAG['LARGE_SEP']
         if flag and bypos_err != '':
-            flag |= FLAG_BYPOS_FAIL
+            flag |= NED_FLAG['BYPOS_FAIL']
 
         # Check whether byname's CROSSIDS confirm the object name. When True,
         # byname is preferred even with a large positional offset because the
@@ -364,12 +686,15 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
             src, source_str = brow, 'byname'
         elif flag == 0:
             src, source_str = brow, 'byname'
-        elif not (flag & FLAG_BYPOS_FAIL):
+        elif not (flag & NED_FLAG['BYPOS_FAIL']):
             src, source_str = prow, 'bypos'
-        elif not (flag & FLAG_BYNAME_FAIL):
+        elif not (flag & NED_FLAG['BYNAME_FAIL']):
             src, source_str = brow, 'byname'   # position off but name match still valid
         else:
             src, source_str = {}, 'none'
+
+        if source_str != 'none' and redshifts_file_found and sid not in redshift_resolved:
+            missing_redshift_sgaids.append(sid)
 
         # Identification and resolution columns
         cols['SGAID'].append(sid)
@@ -400,34 +725,98 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
             else:
                 cols[col].append(str(raw))
 
-        # Redshift override: NED sometimes assigns a bogus high fiducial
-        # redshift (e.g. SDSS fiber contamination from a background source);
-        # when the adopted default exceeds z_swap_threshold, look for a
-        # better answer in the object's full RedshiftsOfObject measurements.
-        zval   = cols['NED_Z'][-1]
+        # Redshift resolution: three distinct problems, all resolved against
+        # the object's full RedshiftsOfObject measurements. These populate
+        # NED_Z_FLAG (how NED's own default NED_Z was arrived at) -- distinct
+        # from NED_FLAG (cross-match quality, above).
+        #  - Z_SUSPECT: NED assigned a bogus high fiducial redshift (e.g.
+        #    SDSS fiber contamination from a background source); triggered
+        #    when the adopted default exceeds z_swap_threshold.
+        #  - Z_MISSING: NED's overview has no default NED_Z at all, even
+        #    though real measurements exist in the full query (e.g. UGC 06451).
+        #  - Z_CENSORED_PHOTOZ / _SDSS: the default is a photometric
+        #    redshift (matched technique='P') or an SDSS-compilation
+        #    reference; discarded regardless of its numeric value.
+        zflag = 0
+        all_measurements = redshift_alts.get(sid)
+
+        zval    = cols['NED_Z'][-1]
+        matched = _match_measurement(zval, all_measurements, z_match_tol)
+        technique = matched['z_technique']  if matched else ''
+        quality   = matched['quality_flag'] if matched else ''
+
+        censored_photoz = _is_photoz(matched)
+        censored_sdss   = _is_sdss_ref(cols['NED_Z_REF'][-1])
+
         z_orig = np.nan
         n_cand = 0
         n_alt  = 0
-        if not np.isnan(zval) and zval > z_swap_threshold:
-            flag |= FLAG_Z_SUSPECT
-            z_orig  = zval
-            measurements = redshift_alts.get(sid)
-            result = (resolve_redshift_override(measurements, z_swap_threshold, z_cluster_tol)
-                      if measurements else None)
+
+        if censored_photoz or censored_sdss:
+            zflag |= NED_Z_FLAG['Z_CENSORED_PHOTOZ'] if censored_photoz else 0
+            zflag |= NED_Z_FLAG['Z_CENSORED_SDSS']   if censored_sdss   else 0
+            z_orig = zval
+            cols['NED_Z'][-1]     = np.float64('nan')
+            cols['NED_Z_UNC'][-1] = np.float64('nan')
+            cols['NED_Z_REF'][-1] = ''
+            zval = np.nan
+
+        z_missing = np.isnan(zval)
+        z_suspect = (not z_missing) and zval > z_swap_threshold
+
+        if z_missing or z_suspect:
+            if z_suspect:
+                zflag |= NED_Z_FLAG['Z_SUSPECT']
+                z_orig = zval
+            candidates = None
+            if all_measurements:
+                candidates = [m for m in all_measurements
+                             if not _is_photoz(m) and not _is_sdss_ref(m['reference'])]
+            result = (resolve_redshift_override(candidates, z_swap_threshold, z_cluster_tol)
+                      if candidates else None)
             if result is None:
-                flag |= FLAG_Z_UNRESOLVED
+                if z_suspect or censored_photoz or censored_sdss:
+                    zflag |= NED_Z_FLAG['Z_UNRESOLVED']
+                # otherwise: genuinely unmeasured object, no flag -- ordinary case
             else:
+                if z_missing and not (censored_photoz or censored_sdss):
+                    zflag |= NED_Z_FLAG['Z_MISSING']
                 cols['NED_Z'][-1]     = result['z']
                 cols['NED_Z_UNC'][-1] = result['unc_z']
                 cols['NED_Z_REF'][-1] = result['reference']
+                technique = result['technique']
+                quality   = result['quality']
                 n_cand = result['n_candidates']
                 n_alt  = result['n_cluster']
                 if result['unresolved']:
-                    flag |= FLAG_Z_UNRESOLVED
+                    zflag |= NED_Z_FLAG['Z_UNRESOLVED']
         cols['NED_Z_ORIG'].append(np.float64(z_orig))
         cols['NED_Z_NCAND'].append(np.int32(n_cand))
         cols['NED_Z_NALT'].append(np.int32(n_alt))
-        cols['NED_FLAG'][-1] = np.int32(flag)
+        cols['NED_Z_TECHNIQUE'].append(str(technique))
+        cols['NED_Z_QUALITY'].append(str(quality))
+        cols['NED_Z_FLAG'].append(np.int32(zflag))
+
+        # Direct (gold-tier) distance, if any -- see "Direct distance
+        # override" docstring section. Does not affect NED_DIST/NED_DIST_UNC.
+        gold = resolve_distance_gold(distance_alts.get(sid, []))
+        if gold is None:
+            cols['NED_DIST_DIRECT'].append(np.float32('nan'))
+            cols['NED_DIST_DIRECT_UNC'].append(np.float32('nan'))
+            cols['NED_DIST_DIRECT_METHOD'].append('')
+            cols['NED_DIST_DIRECT_REF'].append('')
+        else:
+            cols['NED_DIST_DIRECT'].append(np.float32(gold['dist']))
+            cols['NED_DIST_DIRECT_UNC'].append(np.float32(gold['unc']))
+            cols['NED_DIST_DIRECT_METHOD'].append(str(gold['method']))
+            cols['NED_DIST_DIRECT_REF'].append(str(gold['reference']))
+
+    if missing_redshift_sgaids:
+        log.warning(
+            f'{region}: {len(missing_redshift_sgaids):,d} objects have a NED match '
+            f'(byname/bypos) but no resolved entry in {redshifts_path} (missing or '
+            f'errored, excluding genuine no_match) -- SGAIDs: {missing_redshift_sgaids}'
+        )
 
     # Assemble and write the FITS table
     t = Table()
@@ -449,16 +838,24 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
 
     # Summary statistics -> stdout
     flags   = t['NED_FLAG']
+    zflags  = t['NED_Z_FLAG']
     sources = np.asarray(t['NED_SOURCE'])
     n_byname = int(np.sum(sources == 'byname'))
     n_bypos  = int(np.sum(sources == 'bypos'))
     n_none   = int(np.sum(sources == 'none'))
-    n_large  = int(np.sum((flags & FLAG_LARGE_SEP)   != 0))
-    n_bfail  = int(np.sum((flags & FLAG_BYNAME_FAIL)  != 0))
-    n_pfail  = int(np.sum((flags & FLAG_BYPOS_FAIL)   != 0))
-    n_zsus   = int(np.sum((flags & FLAG_Z_SUSPECT)    != 0))
-    n_zunres = int(np.sum((flags & FLAG_Z_UNRESOLVED) != 0))
+    n_large  = int(np.sum((flags & NED_FLAG['LARGE_SEP'])   != 0))
+    n_bfail  = int(np.sum((flags & NED_FLAG['BYNAME_FAIL']) != 0))
+    n_pfail  = int(np.sum((flags & NED_FLAG['BYPOS_FAIL'])  != 0))
+    n_zsus   = int(np.sum((zflags & NED_Z_FLAG['Z_SUSPECT'])         != 0))
+    n_zunres = int(np.sum((zflags & NED_Z_FLAG['Z_UNRESOLVED'])      != 0))
+    n_zmiss  = int(np.sum((zflags & NED_Z_FLAG['Z_MISSING'])         != 0))
+    n_zphoto = int(np.sum((zflags & NED_Z_FLAG['Z_CENSORED_PHOTOZ']) != 0))
+    n_zsdss  = int(np.sum((zflags & NED_Z_FLAG['Z_CENSORED_SDSS'])   != 0))
+    n_zsus_resolved = int(np.sum(((zflags & NED_Z_FLAG['Z_SUSPECT']) != 0) &
+                                 ((zflags & NED_Z_FLAG['Z_UNRESOLVED']) == 0)))
+    n_no_z   = int(np.sum(np.isnan(t['NED_Z'])))
     n_any    = int(np.sum(flags != 0))
+    n_any_z  = int(np.sum(zflags != 0))
 
     sga_id_set  = set(int(x) for x in sga_id)
     n_no_byname = len(sga_id_set - set(byname.keys()))
@@ -472,14 +869,28 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob,
     print(f'  NED_SOURCE = bypos   : {n_bypos:>8,d}  ({pct(n_bypos):5.1f}%)')
     print(f'  NED_SOURCE = none    : {n_none:>8,d}  ({pct(n_none):5.1f}%)')
     print()
-    print( '  NED_FLAG bits:')
+    print( '  NED_FLAG bits (cross-match quality):')
     print(f'    LARGE_SEP    (0x01) : {n_large:>8,d}  ({pct(n_large):5.1f}%)')
     print(f'    BYNAME_FAIL  (0x02) : {n_bfail:>8,d}  ({pct(n_bfail):5.1f}%)')
     print(f'    BYPOS_FAIL   (0x04) : {n_pfail:>8,d}  ({pct(n_pfail):5.1f}%)')
-    print(f'    Z_SUSPECT    (0x08) : {n_zsus:>8,d}  ({pct(n_zsus):5.1f}%)  '
-          f'(resolved: {n_zsus - n_zunres:,d})')
-    print(f'    Z_UNRESOLVED (0x10) : {n_zunres:>8,d}  ({pct(n_zunres):5.1f}%)')
     print(f'    any flag set        : {n_any:>8,d}  ({pct(n_any):5.1f}%)')
+    print()
+    print( '  NED_Z_FLAG bits (NED redshift resolution):')
+    print(f'    Z_SUSPECT    (0x01) : {n_zsus:>8,d}  ({pct(n_zsus):5.1f}%)  '
+          f'(resolved: {n_zsus_resolved:,d})')
+    print(f'    Z_UNRESOLVED (0x02) : {n_zunres:>8,d}  ({pct(n_zunres):5.1f}%)  '
+          f'(no longer implies Z_SUSPECT -- also set by an unresolved censorship)')
+    print(f'    Z_MISSING    (0x04) : {n_zmiss:>8,d}  ({pct(n_zmiss):5.1f}%)')
+    print(f'    Z_CENS_PHOTOZ(0x08) : {n_zphoto:>8,d}  ({pct(n_zphoto):5.1f}%)')
+    print(f'    Z_CENS_SDSS  (0x10) : {n_zsdss:>8,d}  ({pct(n_zsdss):5.1f}%)')
+    print(f'    any flag set        : {n_any_z:>8,d}  ({pct(n_any_z):5.1f}%)')
+    print()
+    print(f'  NED_Z unset after resolution : {n_no_z:>8,d}  ({pct(n_no_z):5.1f}%)  '
+          f'(includes censored objects with no non-censored alternate)')
+    print()
+    n_dist_direct = int(np.sum(np.asarray(t['NED_DIST_DIRECT_METHOD']) != ''))
+    print(f'  NED_DIST_DIRECT (gold-tier) available : {n_dist_direct:>8,d}  '
+          f'({pct(n_dist_direct):5.1f}%)')
     print()
     print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
     print(f'  Missing from bypos  CSV : {n_no_bypos:>8,d}')
@@ -504,18 +915,30 @@ def main():
                              'RedshiftsOfObject override data produced by SGA2025-ned-query '
                              '--querytype redshifts; {region} is substituted. Skipped '
                              'gracefully if not found (default: ned-redshifts-{region}.csv)')
+    parser.add_argument('--distances-glob', default='ned-distances-{region}.csv',
+                        help='Filename template (relative to --outdir) for the optional '
+                             'DistancesOfObject data produced by SGA2025-ned-query '
+                             '--querytype distances, used to populate NED_DIST_DIRECT; '
+                             '{region} is substituted. Skipped gracefully if not found '
+                             '(default: ned-distances-{region}.csv)')
     parser.add_argument('--z-swap-threshold', type=float, default=0.4,
                         help='Adopted NED_Z above this value triggers consideration of '
                              'alternative redshift measurements (default: 0.4)')
     parser.add_argument('--z-cluster-tol', type=float, default=0.01,
                         help='Relative tolerance |dz|/(1+z) for grouping repeat redshift '
                              'measurements into the same cluster (default: 0.01)')
+    parser.add_argument('--z-match-tol', type=float, default=1e-4,
+                        help='Absolute tolerance in z for matching the overview NED_Z value '
+                             'against the full RedshiftsOfObject list, to recover its '
+                             'NED_Z_TECHNIQUE/NED_Z_QUALITY for the photo-z censorship check '
+                             '(default: 1e-4)')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
-        merge_region(region, args.outdir, args.sep_threshold,
-                     args.redshifts_glob, args.z_swap_threshold, args.z_cluster_tol)
+        merge_region(region, args.outdir, args.sep_threshold, args.redshifts_glob,
+                     args.distances_glob,
+                     args.z_swap_threshold, args.z_cluster_tol, args.z_match_tol)
 
 
 if __name__ == '__main__':

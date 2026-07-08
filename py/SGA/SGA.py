@@ -67,6 +67,41 @@ UNWISEMASKBITS = dict(
 SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
 APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
+# NED cross-match quality (set in SGA2025-ned-merge; purely about whether/how
+# the byname or bypos NED query resolved a match -- see NED_Z_FLAG below for
+# NED's own redshift-resolution bits).
+NED_FLAG = dict(
+    LARGE_SEP = 2**0,   # byname positional offset > threshold; bypos used unless name-confirmed
+    BYNAME_FAIL = 2**1, # byname query error or no match; bypos used instead
+    BYPOS_FAIL = 2**2,  # bypos query also failed; NED cross-match result may be incomplete
+)
+
+# How NED's own default NED_Z was arrived at (set in SGA2025-ned-merge).
+# Distinct from NED_FLAG (cross-match quality, above) and from Z_FLAG (SGA's
+# own adopted-redshift resolution across LVD/DESI/SDSS/NED, below) -- these
+# three bitmasks answer three different questions.
+NED_Z_FLAG = dict(
+    Z_SUSPECT = 2**0,         # adopted NED_Z > --z-swap-threshold; alternates considered
+    Z_UNRESOLVED = 2**1,      # suspect/missing/censored, but no confident replacement found
+    Z_MISSING = 2**2,         # no default NED_Z at all; adopted from the full redshift list instead
+    Z_CENSORED_PHOTOZ = 2**3, # adopted default was a photometric-redshift measurement; discarded
+    Z_CENSORED_SDSS = 2**4,   # adopted default came from an SDSS-compilation reference; discarded
+)
+
+# Adopted-redshift resolution across all sources (set in SGA2025-build-catalog).
+Z_FLAG = dict(
+    DISCREPANCY = 2**0,          # any two measured redshifts (LVD, DESI, SDSS, NED) disagree
+    NED_SUSPECT = 2**1,          # sole measurement is NED; its NED_Z_FLAG has Z_SUSPECT set
+    NED_UNRESOLVED = 2**2,       # as NED_SUSPECT, and NED_Z_FLAG also has Z_UNRESOLVED set
+    NED_MISSING = 2**3,          # sole measurement is NED; its NED_Z_FLAG has Z_MISSING set
+    CONSENSUS_OVERRIDE = 2**4,   # DESI disagreed with an agreeing SDSS/NED pair; replaced by SDSS
+    AUTO_NED_OVERRIDE = 2**5,    # adopted DESI/SDSS Z > --ned-override-zmin replaced by NED
+    NED_CENSORED_PHOTOZ = 2**6,  # sole measurement is NED; its NED_Z_FLAG has Z_CENSORED_PHOTOZ set
+    NED_CENSORED_SDSS = 2**7,    # sole measurement is NED; its NED_Z_FLAG has Z_CENSORED_SDSS set
+    VI_REVIEWED = 2**8,          # Z/Z_IVAR/Z_REF set or confirmed by manual VI; last bit by
+                                  # convention -- the final, human-authoritative step
+)
+
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
                 catalog=False):
@@ -783,7 +818,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
                          minmult, maxmult, test_bricks=test_bricks)
 
 
-def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
+def read_sga_sample(region=None, tractor=False, ellipsephot=False, mindiam=0., maxdiam=1e3,
                     galaxylist=None, first=None, last=None, no_groups=False,
                     minmult=None, maxmult=None, lvd=False, version=None, beta=False,
                     verbose=False):
@@ -796,7 +831,9 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
     of the (also-written, non-deduplicated) per-region files.
 
     Returns the ELLIPSE extension by default, or the row-matched TRACTOR
-    extension when tractor=True.
+    extension when tractor=True, or the row-matched ELLIPSEPHOT extension
+    (the full aperture/curve-of-growth photometry grid, not carried in the
+    default SGA2025 extension) when ellipsephot=True.
 
     Parameters
     ----------
@@ -807,6 +844,10 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
         there is no merged beta catalog.
     tractor : :class:`bool`
         If True, return the TRACTOR extension instead of ELLIPSE.
+    ellipsephot : :class:`bool`
+        If True, return the row-matched ELLIPSEPHOT extension instead of
+        ELLIPSE. Mutually exclusive with tractor=True. Not available when
+        beta=True (no ELLIPSEPHOT extension in the beta catalog).
     mindiam, maxdiam : :class:`float`
         Minimum and maximum GROUP_DIAMETER in arcmin.
     galaxylist : :class:`str`, optional
@@ -835,6 +876,10 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
         All group members whose group has at least one object in sample.
 
     """
+    if tractor and ellipsephot:
+        raise ValueError('tractor and ellipsephot are mutually exclusive; '
+                         'call read_sga_sample separately for each')
+
     if beta:
         if region is None:
             raise ValueError('region is required when beta=True '
@@ -857,15 +902,28 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
                                        galaxylist, verbose, no_groups, lvd, region,
                                        mindiam, maxdiam, minmult, maxmult)
 
-    if not tractor:
+    if not tractor and not ellipsephot:
         return sample, fullsample
 
-    # Return the row-matched TRACTOR rows for the selected objects.
-    tractor_tbl = Table(fitsio.read(samplefile, ext='TRACTOR', upper=True))
-    sgaid_to_row = {int(s): i for i, s in enumerate(tractor_tbl['REF_ID'])}
-    tractor_sample     = tractor_tbl[[sgaid_to_row[int(s)] for s in sample['SGAID']]]
-    tractor_fullsample = tractor_tbl[[sgaid_to_row[int(s)] for s in fullsample['SGAID']]]
-    return tractor_sample, tractor_fullsample
+    if ellipsephot:
+        if beta:
+            raise ValueError('ellipsephot is not available for beta catalogs '
+                             '(no ELLIPSEPHOT extension)')
+        extra_ext = 'ELLIPSEPHOT'
+    else:
+        extra_ext = 'TRACTOR'
+
+    # The final-release TRACTOR extension (like ELLIPSEPHOT) carries a
+    # leading SGAID column duplicating REF_ID; the pre-release beta TRACTOR
+    # extension predates that and only has REF_ID.
+    extra_key = 'REF_ID' if (extra_ext == 'TRACTOR' and beta) else 'SGAID'
+
+    # Return the row-matched TRACTOR/ELLIPSEPHOT rows for the selected objects.
+    extra_tbl = Table(fitsio.read(samplefile, ext=extra_ext, upper=True))
+    sgaid_to_row = {int(s): i for i, s in enumerate(extra_tbl[extra_key])}
+    extra_sample     = extra_tbl[[sgaid_to_row[int(s)] for s in sample['SGAID']]]
+    extra_fullsample = extra_tbl[[sgaid_to_row[int(s)] for s in fullsample['SGAID']]]
+    return extra_sample, extra_fullsample
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,

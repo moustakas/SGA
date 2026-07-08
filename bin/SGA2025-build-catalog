@@ -26,31 +26,123 @@ For each galaxy a single "best" DESI spectrum is selected:
 
   If no spectrum survives all filters, Z_IVAR_DESI=0 (no adopted DESI redshift).
 
-The adopted redshift (Z) priority is LVD > DESI > NED:
+SDSS DR17 spectrum selection
+-----------------------------
+Quality selection mostly happens upstream in SGA2025-desi-dr1-match --sdss:
+that script already restricts matches to "best" extragalactic spectra
+(SPECPRIMARY, GALAXY/QSO, clean ZWARNING/ZWARNING_NOQSO) within a small
+fixed radius (3.5 arcsec default). Here, Z > 1.0 is additionally dropped as
+physically implausible for this sample (mirrors the DESI cut above), then
+the closest remaining match (by SEP_ARCSEC) is taken when more than one
+falls within the radius. If nothing survives, Z_IVAR_SDSS=0 (no adopted
+SDSS redshift). This exists specifically to supersede NED's own copy of
+SDSS spectroscopy (see NED_Z_FLAG Z_CENSORED_SDSS in SGA2025-ned-merge): NED
+doesn't propagate SDSS's own ZWARNING, so a direct match with real quality
+information is preferred.
+
+The adopted redshift (Z) priority is LVD > DESI > SDSS > NED:
   - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
   - DESI when Z_IVAR_DESI > 0
+  - SDSS when Z_IVAR_SDSS > 0
   - NED  when Z_IVAR_NED  > 0
 
-Z_FLAG bits
------------
-  0x01  Z_FLAG_DISCREPANCY     any two measured redshifts differ by more than
+Z_FLAG bits (SGA's own adopted-redshift resolution across all sources; see
+SGA.SGA.Z_FLAG for the canonical definitions, imported below)
+-----------------------------------------------------------------------------
+  0x001  DISCREPANCY          any two of the measured redshifts (LVD, DESI,
+                                SDSS, NED) differ by more than
                                 --vdiff-threshold km/s
-  0x02  Z_FLAG_NED_SUSPECT     NED is the sole redshift measurement (no LVD or
-                                DESI value at all) and NED_FLAG Z_SUSPECT is set
-  0x04  Z_FLAG_NED_UNRESOLVED  as above, and NED_FLAG Z_UNRESOLVED is set (no
-                                confident replacement was found by
+  0x002  NED_SUSPECT          NED is the sole redshift measurement (no LVD,
+                                DESI, or SDSS value at all) and its
+                                NED_Z_FLAG has Z_SUSPECT set
+  0x004  NED_UNRESOLVED       as above, and NED_Z_FLAG also has Z_UNRESOLVED
+                                set (no confident replacement was found by
                                 SGA2025-ned-merge; the adopted Z may be wrong)
+  0x008  NED_MISSING          as above, and NED_Z_FLAG has Z_MISSING set
+                                (NED's own overview had no default redshift
+                                at all; the adopted Z came from
+                                SGA2025-ned-merge's RedshiftsOfObject
+                                override instead)
+  0x010  CONSENSUS_OVERRIDE   DESI disagreed with SDSS and NED, which
+                                agreed with each other; adopted Z replaced
+                                by SDSS's; see below
+  0x020  AUTO_NED_OVERRIDE    adopted DESI/SDSS Z > --ned-override-zmin
+                                was automatically replaced by NED's Z; see
+                                below
+  0x040  NED_CENSORED_PHOTOZ  as NED_SUSPECT, and NED_Z_FLAG has
+                                Z_CENSORED_PHOTOZ set (NED's default was a
+                                photometric-redshift measurement, discarded
+                                by SGA2025-ned-merge)
+  0x080  NED_CENSORED_SDSS    as NED_SUSPECT, and NED_Z_FLAG has
+                                Z_CENSORED_SDSS set (NED's default came from
+                                an SDSS-compilation reference, discarded by
+                                SGA2025-ned-merge)
+  0x100  VI_REVIEWED          Z/Z_IVAR/Z_REF were set (or confirmed) by a
+                                manual VI pass; see --vi-redshifts below
 
-NED_FLAG (carried verbatim from ned-merged-{region}.fits, see
-SGA2025-ned-merge) may include Z_SUSPECT (0x08, adopted NED_Z exceeded the
-redshift-override threshold there) and Z_UNRESOLVED (0x10, no confident
-replacement was found). Z_NED/Z_IVAR_NED are used as-is regardless of these
-bits -- unlike the DESI GALAXY Z>1.0 cut above, no implausibility filtering
-is applied to NED redshifts here. Z_FLAG_NED_SUSPECT/UNRESOLVED (above) only
-propagate these bits when NED is the sole measurement, since DISCREPANCY
-already covers cases where a second measurement exists to cross-check
-against; both are intended as a signal for targeted visual inspection, not
-an automatic correction.
+NED_FLAG and NED_Z_FLAG are both carried verbatim from ned-merged-{region}.fits
+(see SGA2025-ned-merge): NED_FLAG records NED cross-match quality (unrelated
+to redshifts); NED_Z_FLAG records how NED's own default NED_Z was arrived at
+-- Z_SUSPECT (0x01, adopted NED_Z exceeded the redshift-override threshold
+there), Z_UNRESOLVED (0x02, no confident replacement was found), Z_MISSING
+(0x04, NED had no default NED_Z at all and the value was adopted from the
+full RedshiftsOfObject query instead), Z_CENSORED_PHOTOZ (0x08, discarded
+photometric default), and Z_CENSORED_SDSS (0x10, discarded SDSS-compilation
+default). Z_NED/Z_IVAR_NED are used as-is regardless of these bits -- unlike
+the DESI GALAXY Z>1.0 cut above, no implausibility filtering is applied to
+NED redshifts here. The five Z_FLAG NED_* bits above only propagate
+NED_Z_FLAG when NED is the sole measurement (no LVD, DESI, or SDSS value),
+since DISCREPANCY already covers cases where a second measurement exists to
+cross-check against; all five are intended as a signal for targeted visual
+inspection, not an automatic correction.
+
+Consensus override
+--------------------
+DESI always wins normal priority when it has a valid redshift, so it is the
+only source that can end up adopted despite being the outlier. When DESI,
+SDSS, and NED are all measured for an object, DESI disagrees with SDSS
+(> --vdiff-threshold), and DESI disagrees with NED, but SDSS and NED agree
+with each other, the adopted Z/Z_IVAR/Z_REF are replaced by SDSS's instead
+of blindly trusting priority order. Runs before the automatic NED override
+below, and is skipped for objects it has already resolved.
+
+Automatic NED override (--ned-override-zmin)
+----------------------------------------------
+This sample is overwhelmingly z < 0.3, and NED redshifts have already been
+purged of photo-z and SDSS-compiled values (see SGA2025-ned-merge), so a
+DESI/SDSS redshift above --ned-override-zmin (default 0.3) with an
+independent NED measurement on file is treated as a fiber landing on a
+background source: the adopted Z/Z_IVAR/Z_REF are replaced by NED's,
+unconditionally (not gated on Z_FLAG's DISCREPANCY bit -- some genuine mismatches
+fall just inside --vdiff-threshold). Runs after the consensus override
+above (and is skipped for objects it already resolved), but before
+--vi-redshifts, so a VI pass can still override either auto-correction if
+needed.
+
+Manual VI overrides (optional --vi-redshifts input)
+-----------------------------------------------------
+--vi-redshifts points at a VI worksheet CSV (see SGA2025-qa-redshifts),
+applied after the normal LVD/DESI/SDSS/NED resolution above, per SGAID, by
+its VI_STATUS column: 'discard' zeroes Z/Z_IVAR and blanks Z_REF; 'override'
+sets Z/Z_IVAR from VI_Z/VI_Z_IVAR and Z_REF='VI'; 'ok' leaves Z/Z_IVAR/Z_REF
+unchanged. All three set Z_FLAG's VI_REVIEWED bit and clear any other Z_FLAG bits
+(the issue that triggered VI is resolved). Rows with a blank VI_STATUS are
+skipped, so a partially-completed worksheet can be applied repeatedly.
+
+Z_COSMO (peculiar-velocity-corrected redshift)
+-----------------------------------------------
+For every object with Z_IVAR > 0, the adopted (heliocentric) Z is converted
+to the CMB frame using the standard dipole (Planck 2018: 369.82 km/s toward
+RA=167.942, Dec=-6.944 J2000). For v_cmb < 20,000 km/s (roughly the 2M++
+reconstruction boundary), pvhub (https://github.com/KSaid-1/pvhub; optional
+dependency, see etc/README.md) predicts the peculiar velocity from each
+available flow-field reconstruction; Z_COSMO is the CMB-frame redshift with
+the mean predicted peculiar velocity removed, and Z_COSMO_IVAR combines the
+model-to-model scatter with the measured redshift error in quadrature.
+Beyond 20,000 km/s -- outside the reconstructions' domain -- Z_COSMO is just
+the CMB-frame redshift, with Z_COSMO_IVAR carried over unchanged from Z_IVAR.
+If pvhub is not installed, Z_COSMO falls back to the CMB-frame redshift
+(no peculiar-velocity correction) for all objects.
 
 Sentinels
 ---------
@@ -75,7 +167,21 @@ mismatch is corrected before writing (known case: REGION int64 -> int16).
 
 Output
 ------
-  {outdir}/SGA2025-{region}-{version}.fits   (EXTNAME='SGA2025')
+  {outdir}/SGA2025-{region}-{version}.fits, three extensions:
+    SGA2025      -- primary catalog: identification, geometry, redshifts,
+                    distances, spectroscopy, and nominal photometry
+                    (SMA_FLUX, FLUX_REF, FLUX_{band}/FLUX_IVAR_{band};
+                    per-object default aperture/method, see
+                    DEFAULT_PHOT_METHOD).
+    ELLIPSEPHOT  -- full aperture-photometry/curve-of-growth grid
+                    (SGAID + FLUX_AP##_*, COG_MTOT_*, GINI_*, R22-R26, etc.),
+                    row-matched to SGA2025 via SGAID (leading column).
+    TRACTOR      -- Tractor source-fitting parameters, row-matched to
+                    SGA2025 via REF_ID (also duplicated as a leading
+                    SGAID column, for use standalone).
+
+  merge_regions() combines the per-region files into a single
+  {outdir}/SGA2025-{version}.fits with the same three extensions.
 
 Examples
 --------
@@ -96,13 +202,16 @@ SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/
   --redshiftdir=/Users/ioannis/research/projects/SGA/2025/sample/redshifts \
   --outdir=/Users/ioannis/research/projects/SGA/2025/public \
   --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv \
+  --vi-redshifts=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/vi-redshifts.csv \
   --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits
 
 """
 import os
 import re
+import csv
 import logging
 import argparse
+import warnings
 from collections import defaultdict
 from importlib import resources
 from pathlib import Path
@@ -110,10 +219,17 @@ from pathlib import Path
 import numpy as np
 import fitsio
 from astropy.table import Table, Column, vstack
+from astropy.coordinates import SkyCoord
 import astropy.units as u
 
+try:
+    from pvhub import get_models  # optional; see etc/README.md
+except ImportError:
+    get_models = None
+
 from SGA.util import C_LIGHT
-from SGA.SGA import read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS
+from SGA.SGA import (read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS,
+                     NED_Z_FLAG, Z_FLAG)
 from SGA.geometry import choose_geometry
 from SGA.ellipse import MAXSHIFT_ARCSEC, ELLIPSEMODE
 from SGA.coadds import REGIONBITS
@@ -123,17 +239,21 @@ from SGA.logger import log, LOGFMT
 
 NED_Z_NOMINAL_ERR     = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
 FLOAT_SENTINEL        = -1.              # sentinel for floats without an IVAR companion
-Z_FLAG_DISCREPANCY    = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
-Z_FLAG_NED_SUSPECT    = 0x02             # sole measurement is NED; NED_FLAG Z_SUSPECT set
-Z_FLAG_NED_UNRESOLVED = 0x04             # sole measurement is NED; NED_FLAG Z_UNRESOLVED set
 
-# Must match FLAG_Z_SUSPECT / FLAG_Z_UNRESOLVED in SGA2025-ned-merge.
-NED_FLAG_Z_SUSPECT    = 0x08
-NED_FLAG_Z_UNRESOLVED = 0x10
+# CMB dipole apex (Planck 2018), used to convert the adopted (heliocentric) Z
+# to a CMB-frame redshift before querying pvhub -- pvhub's reconstructions
+# (and their 2M++ coverage boundary) are defined in the CMB frame.
+CMB_APEX_RA_DEG     = 167.942
+CMB_APEX_DEC_DEG    = -6.944
+CMB_APEX_V_KMS      = 369.82
+# Objects at or beyond this CMB-frame velocity are outside/at the edge of the
+# pvhub reconstructions' domain; Z_COSMO falls back to the CMB-frame redshift
+# with no peculiar-velocity correction (Z_COSMO_IVAR carried over from Z_IVAR).
+PVHUB_VCMB_MAX_KMS  = 20000.
 
 # NED_CARRY output columns that use 0. as their missing sentinel because they
 # have an IVAR companion column (IVAR=0 signals no measurement).
-NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
+NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED', 'DIST_NED_DIRECT'})
 
 # Hand-curated corrections to GALAXY names returned by NED.
 # Keys are the exact NED name; values are the preferred replacement.
@@ -230,6 +350,10 @@ def _strip_zero_pad(s):
     """Lowercase, strip spaces, strip leading zeros from digit sequences."""
     return _ZERO_PAD_RE.sub('', s.lower().replace(' ', ''))
 
+# Matches the LVD catalog's short Messier form (e.g. 'M 33', 'M81'), used to
+# alias it to SGA's OBJNAME convention ('MESSIER 033', 'MESSIER 081').
+MESSIER_RE = re.compile(r'^M\s*(\d+)$', re.IGNORECASE)
+
 # Priority-ordered catalog prefixes for "famous name" promotion. When CROSSIDS
 # contains multiple names, the highest-priority match is promoted to GALAXY
 # regardless of NED's own choice. Prefixes absent from this list (2MASX, SDSS,
@@ -307,30 +431,34 @@ COL_ORDER = [
     'SGAID', 'SGANAME', 'GALAXY', 'ALTNAMES',
     'OBJNAME',
     'PGC', 'RA', 'DEC',
+    'RA_TRACTOR', 'DEC_TRACTOR',
     'MORPH',
     'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
-    # --- Size and geometry (primary SGA product) ---
-    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
-    'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
     # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
-    'DIST', 'DIST_IVAR', 'DIST_REF',
-    # --- DESI spectroscopy ---
-    'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
-    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
-    # --- NED redshift and distance ---
-    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
-    'NED_FLAG',
-    # --- LVD redshifts and distances ---
-    'Z_LVD', 'Z_IVAR_LVD',
-    'DIST_LVD', 'DIST_IVAR_LVD',
-    # --- NED cross-match ---
-    #'NED_TYPE', 'NED_MORPH',
-    #'NED_FLAG',
-    #'NED_SOURCE', 'NED_BYNAME_SEP',
+    'DIST', 'DIST_IVAR', 'DIST_REF', 'DIST_METHOD',
+    # --- Peculiar-velocity-corrected redshift (pvhub) ---
+    'Z_COSMO', 'Z_COSMO_IVAR',
     # --- Group finding ---
     'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
     'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
+    # --- Size and geometry (primary SGA product) ---
+    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
+    'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
+    # Optical half-light radius (from the curve-of-growth fit; full grid,
+    # including IR/UV bands, is in ELLIPSEPHOT).
+    'SMA50_G', 'SMA50_R', 'SMA50_I', 'SMA50_Z',
+    'SMA50_ERR_G', 'SMA50_ERR_R', 'SMA50_ERR_I', 'SMA50_ERR_Z',
+    # --- Nominal photometry (default aperture/method; see ELLIPSEPHOT for
+    #     the full aperture grid and curve-of-growth fits) ---
+    'SMA_FLUX',
+    'FLUX_G', 'FLUX_R', 'FLUX_I', 'FLUX_Z',
+    'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+    'FLUX_FUV', 'FLUX_NUV',
+    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
+    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+    'FLUX_IVAR_FUV', 'FLUX_IVAR_NUV',
+    'FLUX_REF',
     # --- Imaging quality and corrections ---
     'EBV',
     'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_I', 'MW_TRANSMISSION_Z',
@@ -338,9 +466,24 @@ COL_ORDER = [
     'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
     'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
     'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
+    # --- DESI spectroscopy ---
+    'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
+    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
+    # --- SDSS DR17 spectroscopy ---
+    'SPECOBJID_SDSS', 'Z_SDSS', 'Z_IVAR_SDSS', 'CLASS_SDSS',
+    # --- NED redshift and distance ---
+    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
+    'DIST_NED_DIRECT', 'DIST_IVAR_NED_DIRECT', 'DIST_NED_DIRECT_METHOD',
+    'NED_FLAG', 'NED_Z_FLAG',
+    # --- LVD redshifts and distances ---
+    'Z_LVD', 'Z_IVAR_LVD',
+    'DIST_LVD', 'DIST_IVAR_LVD',
+    # --- NED cross-match ---
+    #'NED_TYPE', 'NED_MORPH',
+    #'NED_FLAG',
+    #'NED_SOURCE', 'NED_BYNAME_SEP',
     # --- Processing / initialization metadata ---
     #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
-    'RA_TRACTOR', 'DEC_TRACTOR',
     'RA_INIT', 'DEC_INIT',
     'DIAM_INIT',
     'BA_INIT', 'PA_INIT',
@@ -349,6 +492,15 @@ COL_ORDER = [
     'SMA_MASK',
     'INIT_REF',
     #'FITMODE',
+]
+
+# ---------------------------------------------------------------------------
+# Full-detail ellipse-photometry column order, written to the ELLIPSEPHOT
+# extension (not SGA2025). 'SGAID' is prepended separately when the table is
+# assembled, so this list holds only the photometric/morphological columns.
+# Columns absent from this list are appended at the end in their original order.
+# ---------------------------------------------------------------------------
+ELLIPSEPHOT_COL_ORDER = [
     # --- Morphology (diagnostic) ---
     'GINI_G', 'GINI_R', 'GINI_I', 'GINI_Z',
     'GINI_W1', 'GINI_W2', 'GINI_W3', 'GINI_W4',
@@ -360,11 +512,10 @@ COL_ORDER = [
     'COG_MTOT_ERR_G', 'COG_MTOT_ERR_R', 'COG_MTOT_ERR_I', 'COG_MTOT_ERR_Z',
     'COG_MTOT_ERR_W1', 'COG_MTOT_ERR_W2', 'COG_MTOT_ERR_W3', 'COG_MTOT_ERR_W4',
     'COG_MTOT_ERR_FUV', 'COG_MTOT_ERR_NUV',
-    # --- Half-light radius (from CoG) ---
-    'SMA50_G', 'SMA50_R', 'SMA50_I', 'SMA50_Z',
+    # --- Half-light radius (from CoG; optical SMA50_{G,R,I,Z} lives in
+    #     SGA2025 instead -- see COL_ORDER's "Size and geometry" section) ---
     'SMA50_W1', 'SMA50_W2', 'SMA50_W3', 'SMA50_W4',
     'SMA50_FUV', 'SMA50_NUV',
-    'SMA50_ERR_G', 'SMA50_ERR_R', 'SMA50_ERR_I', 'SMA50_ERR_Z',
     'SMA50_ERR_W1', 'SMA50_ERR_W2', 'SMA50_ERR_W3', 'SMA50_ERR_W4',
     'SMA50_ERR_FUV', 'SMA50_ERR_NUV',
     # --- Optical isophotal radii ---
@@ -466,9 +617,13 @@ NED_CARRY = [
     ('NED_Z_REF',         'Z_REF_NED',      None),
     ('NED_DIST',          'DIST_NED',       u.Mpc),
     # DIST_IVAR_NED inserted after DIST_NED in assembly (computed from NED_DIST_UNC)
+    ('NED_DIST_DIRECT',        'DIST_NED_DIRECT',        u.Mpc),
+    # DIST_IVAR_NED_DIRECT inserted after DIST_NED_DIRECT (from NED_DIST_DIRECT_UNC)
+    ('NED_DIST_DIRECT_METHOD', 'DIST_NED_DIRECT_METHOD', None),
     #('NED_TYPE',          'NED_TYPE',       None),
     ('NED_MORPH',         'MORPH',      None),
     ('NED_FLAG',          'NED_FLAG',       None),
+    ('NED_Z_FLAG',        'NED_Z_FLAG',     None),
     #('NED_SOURCE',        'NED_SOURCE',     None),
     #('BYNAME_SEP_ARCSEC', 'NED_BYNAME_SEP', u.arcsec),
 ]
@@ -486,6 +641,21 @@ DESI_COLS = [
     ('NSPEC_DESI',     np.int32,   None),
 ]
 
+# SDSS DR17 columns added to the output: (name, numpy dtype, astropy unit).
+# SPECOBJID_SDSS is a string, not int64: SDSS's SPECOBJID is effectively
+# unsigned 64-bit (plate/mjd/fiber/run2d packed together) and some values
+# exceed signed int64 max, so it's carried through as-is (matches its dtype
+# in specObj-dr17.fits).
+# No NSPEC_SDSS/ZWARNING_SDSS -- SGA2025-desi-dr1-match --sdss already
+# selects "best" spectra and the closest match, so there's nothing left to
+# re-filter or re-rank on downstream, unlike DESI's raw multi-spectrum dump.
+SDSS_COLS = [
+    ('SPECOBJID_SDSS', 'U22',      None),
+    ('Z_SDSS',         np.float64, None),
+    ('Z_IVAR_SDSS',    np.float64, None),
+    ('CLASS_SDSS',     'U6',       None),
+]
+
 # Adopted redshift columns: (name, numpy dtype, astropy unit)
 ADOPTED_COLS = [
     ('Z',      np.float64, None),
@@ -494,19 +664,37 @@ ADOPTED_COLS = [
     ('Z_FLAG', np.int16,   None),
 ]
 
-# Adopted distance columns; LVD takes precedence over NED when available.
+# Adopted distance columns. Priority: gold-tier NED_DIRECT > LVD > NED
+# (blended mean) > ZCOSMO (Hubble-flow from Z_COSMO, see --h0). DIST_REF is
+# the coarse 4-way source tag; DIST_METHOD is the specific technique (gold
+# method name / LVD's own distance_measurement_method / 'NED_MEAN' /
+# 'HUBBLE_FLOW'), uppercased for consistent presentation across tiers.
+# DIST_NED_DIRECT/DIST_IVAR_NED_DIRECT are assembled separately, alongside
+# the rest of NED_CARRY (see the "NED columns" assembly block) -- not here.
 DIST_COLS = [
-    ('DIST',          np.float32, u.Mpc),
-    ('DIST_IVAR',     np.float32, u.Mpc**-2),
-    ('DIST_REF',      'U4',       None),
-    ('DIST_LVD',      np.float32, u.Mpc),
-    ('DIST_IVAR_LVD', np.float32, u.Mpc**-2),
+    ('DIST',                 np.float32, u.Mpc),
+    ('DIST_IVAR',            np.float32, u.Mpc**-2),
+    ('DIST_REF',             'U10',      None),
+    ('DIST_METHOD',          'U16',      None),
+    ('DIST_LVD',             np.float32, u.Mpc),
+    ('DIST_IVAR_LVD',        np.float32, u.Mpc**-2),
 ]
 
 # LVD redshift columns derived from vlos_systemic / vlos_sigma (km/s).
 LVD_Z_COLS = [
     ('Z_LVD',      np.float64, None),
     ('Z_IVAR_LVD', np.float64, None),
+]
+
+# Peculiar-velocity-corrected ("cosmological") redshift, from pvhub. Z_COSMO
+# is the CMB-frame Z with the mean pvhub-predicted peculiar velocity (across
+# all available flow-field reconstructions) removed, for objects with
+# v_cmb < PVHUB_VCMB_MAX_KMS; beyond that (outside the reconstructions'
+# domain) Z_COSMO is just the CMB-frame redshift, and Z_COSMO_IVAR is carried
+# over unchanged from Z_IVAR. Zero sentinel (Z_COSMO_IVAR=0) when Z_IVAR=0.
+COSMO_COLS = [
+    ('Z_COSMO',      np.float64, None),
+    ('Z_COSMO_IVAR', np.float64, None),
 ]
 
 # Initial geometry columns restored from the parent/nocuts catalog (v0.10).
@@ -592,6 +780,25 @@ def _angular_sep_arcsec(ra1, dec1, ra2, dec2):
     return np.sqrt(((ra2 - ra1) * cos_dec)**2 + (dec2 - dec1)**2) * 3600.
 
 
+def _vdiff_kms(z1, z2):
+    """Rest-frame velocity difference (km/s) between two redshifts; scalar
+    or array. Same formula as the Z_FLAG DISCREPANCY check below."""
+    return C_LIGHT * np.abs(z1 - z2) / (1. + np.minimum(z1, z2))
+
+
+def _helio_to_cmb_z(ra, dec, z_helio):
+    """Convert heliocentric redshift to the CMB frame (non-relativistic; the
+    solar velocity relative to the CMB, ~370 km/s, is negligible relative to
+    c at the redshifts this catalog covers).
+
+    ra/dec: degrees (float or array). z_helio: dimensionless (float or array).
+    """
+    apex = SkyCoord(ra=CMB_APEX_RA_DEG * u.degree, dec=CMB_APEX_DEC_DEG * u.degree)
+    coord = SkyCoord(ra=np.asarray(ra) * u.degree, dec=np.asarray(dec) * u.degree)
+    cos_theta = np.cos(coord.separation(apex).radian)
+    return z_helio + CMB_APEX_V_KMS * cos_theta / C_LIGHT
+
+
 def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     """Select the best DESI spectrum for one SGA galaxy.
 
@@ -644,21 +851,176 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     return pool[np.argmax(pool['DELTACHI2'])]
 
 
-def _reorder_cols(tbl):
-    """Reorder tbl columns per COL_ORDER; append unlisted columns at the end."""
-    unknown = [c for c in COL_ORDER if c not in tbl.colnames]
+def _select_sdss(rows):
+    """Select the best SDSS DR17 spectrum for one SGA galaxy.
+
+    rows: numpy structured array -- all match rows for this SGAID, already
+    restricted to "best" extragalactic spectra and a fixed search radius by
+    SGA2025-desi-dr1-match --sdss. Drop Z > 1.0 (GALAXY or QSO) as physically
+    implausible for this sample, mirroring the DESI cut. Among the survivors,
+    the only remaining choice is the closest match (by SEP_ARCSEC) when more
+    than one falls within that radius. Returns None if none survive.
+    """
+    rows = rows[rows['Z'] <= 1.0]
+    if len(rows) == 0:
+        return None
+    return rows[np.argmin(rows['SEP_ARCSEC'])]
+
+
+def load_vi_redshifts(path):
+    """Load a VI worksheet CSV (see SGA2025-qa-redshifts).
+
+    Returns dict[int SGAID -> dict(status, z, z_ivar)] for rows with
+    VI_STATUS in ('ok', 'discard', 'override'); rows with a blank or other
+    VI_STATUS (not yet reviewed) are skipped. Returns {} if path is None.
+    """
+    out = {}
+    if not path:
+        return out
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            status = row.get('VI_STATUS', '').strip().lower()
+            if status not in ('ok', 'discard', 'override'):
+                continue
+            try:
+                sid = int(row['SGAID'])
+            except (KeyError, ValueError):
+                continue
+            out[sid] = {'status': status, 'z': row.get('VI_Z', ''),
+                       'z_ivar': row.get('VI_Z_IVAR', '')}
+    return out
+
+
+def _reorder_cols(tbl, order=COL_ORDER):
+    """Reorder tbl columns per `order`; append unlisted columns at the end."""
+    unknown = [c for c in order if c not in tbl.colnames]
     if unknown:
-        log.warning(f'COL_ORDER references unknown columns: {unknown}')
-    listed    = [c for c in COL_ORDER if c in tbl.colnames]
+        log.warning(f'Column order references unknown columns: {unknown}')
+    listed    = [c for c in order if c in tbl.colnames]
     remaining = [c for c in tbl.colnames if c not in set(listed)]
     return tbl[listed + remaining]
+
+
+# ---------------------------------------------------------------------------
+# Default ("nominal") photometry
+#
+# FLUX_{band}/FLUX_IVAR_{band} in the SGA2025 extension are not a new
+# measurement -- they're a per-object pick from the full aperture/CoG grid
+# in ELLIPSEPHOT, chosen to give most users a single sensible flux without
+# having to understand the aperture-photometry data model.
+#
+# DEFAULT_PHOT_METHOD is applied uniformly to every object for now. The
+# selection is expected to become per-object once an algorithm for picking
+# the best aperture/method per galaxy (e.g. by S/N, masking fraction, or
+# aperture-correction quality) is developed; _default_photometry already
+# supports that via a per-row `method_arr` -- only the code that builds
+# `method_arr` needs to change.
+# ---------------------------------------------------------------------------
+DEFAULT_PHOT_METHOD = 'AP04'
+
+
+def _photometry_from_method(tbl, bands, method):
+    """Compute FLUX_{band}/FLUX_IVAR_{band} (nanomaggies) and the associated
+    aperture radius for every row in `tbl`, using a single named source.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table`
+        Table with the full ELLIPSEPHOT-style column set (SMA_AP##,
+        FLUX_AP##_*, FLUX_ERR_AP##_*, COG_MTOT_*, COG_MTOT_ERR_*) present.
+    bands : :class:`list` of :class:`str`
+        Bands to compute FLUX_{band}/FLUX_IVAR_{band} for.
+    method : :class:`str`
+        Either an aperture index ('AP00'..'AP04', matching the FLUX_AP##_*
+        columns) or 'COG_MTOT' (total curve-of-growth magnitude, converted
+        to nanomaggies).
+
+    Returns
+    -------
+    flux, ivar : :class:`dict` of {band: :class:`~numpy.ndarray`}
+    sma : :class:`~numpy.ndarray`
+        Aperture semi-major axis (arcsec) within which flux/ivar were
+        measured, for method='AP00'..'AP04'. FLOAT_SENTINEL (no finite
+        aperture) for method='COG_MTOT', an extrapolated/asymptotic total.
+    """
+    flux, ivar = {}, {}
+    for filt in bands:
+        if method.startswith('AP'):
+            f = np.asarray(tbl[f'FLUX_{method}_{filt}'], dtype=np.float64)
+            e = np.asarray(tbl[f'FLUX_ERR_{method}_{filt}'], dtype=np.float64)
+            iv = np.zeros_like(f)
+            good = e > 0
+            iv[good] = 1. / e[good]**2
+        elif method == 'COG_MTOT':
+            mag    = np.asarray(tbl[f'COG_MTOT_{filt}'], dtype=np.float64)
+            magerr = np.asarray(tbl[f'COG_MTOT_ERR_{filt}'], dtype=np.float64)
+            good = mag > 0
+            f = np.zeros_like(mag)
+            f[good] = 10.**(-0.4 * (mag[good] - 22.5))
+            iv = np.zeros_like(mag)
+            errgood = good & (magerr > 0)
+            iv[errgood] = (f[errgood] * 0.4 * np.log(10) * magerr[errgood])**-2
+        else:
+            raise ValueError(f'Unknown photometry method {method!r}')
+        flux[filt] = f.astype(np.float32)
+        ivar[filt] = iv.astype(np.float32)
+
+    if method.startswith('AP'):
+        sma = np.asarray(tbl[f'SMA_{method}'], dtype=np.float32)
+    elif method == 'COG_MTOT':
+        sma = np.full(len(tbl), FLOAT_SENTINEL, dtype=np.float32)
+    else:
+        raise ValueError(f'Unknown photometry method {method!r}')
+    return flux, ivar, sma
+
+
+def _default_photometry(tbl, bands, method_arr):
+    """Assemble default FLUX_{band}/FLUX_IVAR_{band}/SMA_FLUX per object
+    from a per-row method selection.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table`
+        See :func:`_photometry_from_method`.
+    bands : :class:`list` of :class:`str`
+        Bands to compute FLUX_{band}/FLUX_IVAR_{band} for.
+    method_arr : :class:`~numpy.ndarray` of :class:`str`, shape (nobj,)
+        Per-object method name (see :func:`_photometry_from_method`)
+        selecting which source to adopt for that object.
+
+    Returns
+    -------
+    flux, ivar : :class:`dict` of {band: :class:`~numpy.ndarray`}
+        Nanomaggies flux/ivar assembled row-by-row from the method(s)
+        indicated by method_arr.
+    sma : :class:`~numpy.ndarray`
+        Aperture semi-major axis (arcsec), assembled the same way (see
+        :func:`_photometry_from_method`).
+    """
+    methods     = sorted(set(method_arr))
+    precomputed = {m: _photometry_from_method(tbl, bands, m) for m in methods}
+
+    nobj = len(tbl)
+    flux = {filt: np.zeros(nobj, dtype=np.float32) for filt in bands}
+    ivar = {filt: np.zeros(nobj, dtype=np.float32) for filt in bands}
+    sma  = np.zeros(nobj, dtype=np.float32)
+    for m in methods:
+        sel = method_arr == m
+        mflux, mivar, msma = precomputed[m]
+        for filt in bands:
+            flux[filt][sel] = mflux[filt][sel]
+            ivar[filt][sel] = mivar[filt][sel]
+        sma[sel] = msma[sel]
+    return flux, ivar, sma
 
 
 # ---------------------------------------------------------------------------
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep, lvd_catalog=None, parent_nocuts=None, lines=None):
+                 desi_max_sep, lvd_catalog=None, parent_nocuts=None,
+                 ned_override_zmin=0.3, vi_redshifts=None, lines=None, h0=70.,
+                 dist_ivar_floor=0.15):
     def emit(msg=''):
         print(msg)
         if lines is not None:
@@ -798,15 +1160,36 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     ned_by_sgaid = {int(r['SGAID']): r for r in ned_tbl}
 
     # --- LVD catalog (distance takes precedence over NED for LVD objects) ---
-    # Match by OBJNAME; distance and errors converted from kpc to Mpc.
+    # Match by OBJNAME (plus a Messier short-form alias, e.g. 'M 33' ->
+    # 'MESSIER 033'); distance and errors converted from kpc to Mpc.
     lvd_by_name = {}
     if lvd_catalog:
         log.info(f'  Loading LVD catalog {lvd_catalog}')
         lvd = Table.read(lvd_catalog)
-        lvd_by_name = {str(r['name']): r for r in lvd}
+        # confirmed_real: 1/0/masked. Drop only explicit 0 (rejected);
+        # masked (unreviewed for this flag, e.g. long-known Messier
+        # galaxies) is kept -- np.asarray() on a masked column silently
+        # fills masked entries as 0, so the mask must be checked explicitly.
+        is_masked = np.ma.getmaskarray(lvd['confirmed_real'])
+        keep      = is_masked | (np.asarray(lvd['confirmed_real']) != 0)
+        n_dropped = int(np.sum(~keep))
+        if n_dropped:
+            log.info(f'  Dropping {n_dropped:,d}/{len(lvd):,d} LVD entries with confirmed_real=0')
+        lvd = lvd[keep]
+        for r in lvd:
+            name = str(r['name'])
+            lvd_by_name[name] = r
+            m = MESSIER_RE.match(name.strip())
+            if m:
+                lvd_by_name[f'MESSIER {int(m.group(1)):03d}'] = r
         is_lvd      = (beta['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
         log.info(f'  LVD catalog: {len(lvd):,d} entries; '
                  f'{int(np.sum(is_lvd)):,d} LVD objects in SGA sample')
+
+    # --- VI worksheet (manual redshift overrides; see SGA2025-qa-redshifts) -
+    vi_lookup = load_vi_redshifts(vi_redshifts)
+    if vi_redshifts:
+        log.info(f'  VI worksheet {vi_redshifts}: {len(vi_lookup):,d} reviewed SGAIDs')
 
     # --- DESI summary (N_DESI per galaxy) ---------------------------------
     sum_path   = os.path.join(redshiftdir,
@@ -829,6 +1212,23 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         grp[int(matches['SGAID'][i])].append(i)
     log.info(f'  {len(grp):,d} unique SGAIDs with DESI matches')
 
+    # --- SDSS DR17 matches (optional; graceful if not yet generated) ------
+    sdss_match_path = os.path.join(redshiftdir,
+                                   f'SGA2025-SDSS-DR17-matches-{region}.fits')
+    sdss_matches = None
+    sdss_grp     = {}
+    if os.path.exists(sdss_match_path):
+        log.info(f'  Loading {sdss_match_path}')
+        sdss_matches = fitsio.read(sdss_match_path)
+        log.info(f'  {len(sdss_matches):,d} SDSS match rows')
+        sdss_grp = defaultdict(list)
+        for i in range(len(sdss_matches)):
+            sdss_grp[int(sdss_matches['SGAID'][i])].append(i)
+        log.info(f'  {len(sdss_grp):,d} unique SGAIDs with SDSS matches')
+    else:
+        log.info(f'  {sdss_match_path} not found, skipping SDSS redshifts '
+                 '(run SGA2025-desi-dr1-match --sdss to generate)')
+
     # --- Pre-allocate output arrays ---------------------------------------
     # DESI: redshifts/IVARs sentinel 0., IDs sentinel -1, strings ''
     desi_arrs = {
@@ -841,6 +1241,14 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'DELTACHI2_DESI': np.full(n, FLOAT_SENTINEL, np.float64),
         'SPECTYPE_DESI':  np.full(n, '',            dtype='U6'),
         'NSPEC_DESI':     ndesi_arr,
+    }
+
+    # SDSS: redshifts/IVARs sentinel 0., strings '' (including SPECOBJID_SDSS)
+    sdss_arrs = {
+        'SPECOBJID_SDSS': np.full(n, '', dtype='U22'),
+        'Z_SDSS':         np.zeros(n,    np.float64),
+        'Z_IVAR_SDSS':    np.zeros(n,    np.float64),
+        'CLASS_SDSS':     np.full(n, '', dtype='U6'),
     }
 
     # NED: columns with IVAR companions use 0. sentinel; others use FLOAT_SENTINEL
@@ -858,6 +1266,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             ned_arrs[dst] = np.full(n, '', dtype=_str_arr_dtype(col))
     ned_arrs['Z_IVAR_NED']    = np.zeros(n, np.float64)  # from NED_Z_UNC
     ned_arrs['DIST_IVAR_NED'] = np.zeros(n, np.float32)  # from NED_DIST_UNC
+    ned_arrs['DIST_IVAR_NED_DIRECT'] = np.zeros(n, np.float32)  # from NED_DIST_DIRECT_UNC (already Mpc)
 
     # Adopted redshift
     adopted_arrs = {
@@ -867,15 +1276,21 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'Z_FLAG': np.zeros(n, np.int16),
     }
 
-    # Adopted distance (LVD preferred over NED when available).
+    # Adopted distance. Priority: NED_DIRECT (gold) > LVD > NED (mean) >
+    # ZCOSMO (Hubble-flow, filled in a post-pass once Z_COSMO is available).
     # 0. sentinel — DIST_IVAR=0 signals no measurement.
     dist_arrs = {
         'DIST':          np.zeros(n, np.float32),
         'DIST_IVAR':     np.zeros(n, np.float32),
-        'DIST_REF':      np.full(n, '', dtype='U4'),
+        'DIST_REF':      np.full(n, '', dtype='U10'),
+        'DIST_METHOD':   np.full(n, '', dtype='U16'),
         'DIST_LVD':      np.zeros(n, np.float32),
         'DIST_IVAR_LVD': np.zeros(n, np.float32),
     }
+    # LVD's own per-object distance_measurement_method (e.g. 'trgb', 'sbf',
+    # 'host' -- inherited from a host galaxy rather than directly measured;
+    # blank when LVD reports none). Populated alongside DIST_LVD below.
+    lvd_method_arr = np.full(n, '', dtype='U16')
 
     # LVD redshifts (from vlos_systemic / vlos_sigma in km/s).
     lvd_z_arrs = {
@@ -889,6 +1304,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 
     # --- Main resolution loop --------------------------------------------
     log.info(f'  Resolving redshifts (desi_max_sep={desi_max_sep:.1f}")')
+    n_lvd_sample_added = 0
     for i in range(n):
         sid     = int(beta['SGAID'][i])
         sga_ra  = float(beta['RA'][i])
@@ -907,6 +1323,16 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 desi_arrs['ZWARN_DESI'][i]     = int(best['ZWARN'])
                 desi_arrs['DELTACHI2_DESI'][i] = float(best['DELTACHI2'])
                 desi_arrs['SPECTYPE_DESI'][i]  = _strval(best['SPECTYPE'])
+
+        # SDSS DR17 selection
+        if sid in sdss_grp:
+            sbest = _select_sdss(sdss_matches[sdss_grp[sid]])
+            if sbest is not None:
+                zerr  = float(sbest['Z_ERR'])
+                sdss_arrs['SPECOBJID_SDSS'][i] = _strval(sbest['SPECOBJID'])
+                sdss_arrs['Z_SDSS'][i]         = float(sbest['Z'])
+                sdss_arrs['Z_IVAR_SDSS'][i]    = 1. / zerr**2 if zerr > 0. else 0.
+                sdss_arrs['CLASS_SDSS'][i]     = _strval(sbest['CLASS'])
 
         # NED columns
         nrow = ned_by_sgaid.get(sid)
@@ -952,10 +1378,25 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 if dist_ned > 0. and dist_unc > 0.:
                     ned_arrs['DIST_IVAR_NED'][i] = np.float32(1. / dist_unc**2)
 
+            # DIST_IVAR_NED_DIRECT: from NED_DIST_DIRECT_UNC (already Mpc,
+            # not mag -- see SGA2025-ned-merge's resolve_distance_gold);
+            # 0. if no uncertainty reported for the adopted gold measurement.
+            if 'NED_DIST_DIRECT_UNC' in ned_tbl.colnames:
+                try:
+                    dist_direct_unc = float(nrow['NED_DIST_DIRECT_UNC'])
+                except (ValueError, TypeError):
+                    dist_direct_unc = 0.
+                dist_ned_direct = ned_arrs['DIST_NED_DIRECT'][i]
+                if dist_ned_direct > 0. and dist_direct_unc > 0.:
+                    ned_arrs['DIST_IVAR_NED_DIRECT'][i] = np.float32(1. / dist_direct_unc**2)
+
         # LVD redshifts and distances (matched by OBJNAME)
         objname = _strval(beta['OBJNAME'][i])
         if objname in lvd_by_name:
             lrow = lvd_by_name[objname]
+            if not (beta['SAMPLE'][i] & SAMPLE_BITS['LVD']):
+                beta['SAMPLE'][i] |= SAMPLE_BITS['LVD']
+                n_lvd_sample_added += 1
             def _lvd_val(v):
                 if np.ma.is_masked(v):
                     return float('nan')
@@ -981,10 +1422,18 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 mean_err = 0.5 * (em + ep)
                 if np.isfinite(mean_err) and mean_err > 0.:
                     dist_arrs['DIST_IVAR_LVD'][i] = np.float32(1. / mean_err**2)
+                # LVD's own reported technique, if any ('--'/masked -> blank)
+                lvd_method = lrow['distance_measurement_method']
+                if not np.ma.is_masked(lvd_method):
+                    lvd_method = str(lvd_method).strip()
+                    if lvd_method and lvd_method != '--':
+                        lvd_method_arr[i] = lvd_method.upper()
 
-        # Adopted redshift: LVD > DESI > NED
+        # Adopted redshift: LVD > DESI > SDSS > NED
         zivar_desi = desi_arrs['Z_IVAR_DESI'][i]
         z_desi     = desi_arrs['Z_DESI'][i]
+        zivar_sdss = sdss_arrs['Z_IVAR_SDSS'][i]
+        z_sdss     = sdss_arrs['Z_SDSS'][i]
         zivar_lvd  = lvd_z_arrs['Z_IVAR_LVD'][i]
         z_lvd      = lvd_z_arrs['Z_LVD'][i]
         zivar_ned  = zivar_ned_arr[i] if zivar_ned_arr is not None else 0.
@@ -998,6 +1447,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             adopted_arrs['Z'][i]      = z_desi
             adopted_arrs['Z_IVAR'][i] = zivar_desi
             adopted_arrs['Z_REF'][i]  = 'DESI'
+        elif zivar_sdss > 0.:
+            adopted_arrs['Z'][i]      = z_sdss
+            adopted_arrs['Z_IVAR'][i] = zivar_sdss
+            adopted_arrs['Z_REF'][i]  = 'SDSS'
         elif zivar_ned > 0.:
             adopted_arrs['Z'][i]      = z_ned
             adopted_arrs['Z_IVAR'][i] = zivar_ned
@@ -1007,35 +1460,215 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         z_valid = []
         if z_lvd  != 0.:   z_valid.append(z_lvd)
         if zivar_desi > 0.: z_valid.append(z_desi)
+        if zivar_sdss > 0.: z_valid.append(z_sdss)
         if zivar_ned  > 0.: z_valid.append(z_ned)
         for j in range(len(z_valid) - 1):
             for zb in z_valid[j + 1:]:
                 if C_LIGHT * abs(z_valid[j] - zb) / (1. + min(z_valid[j], zb)) > vdiff_threshold:
-                    adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
+                    adopted_arrs['Z_FLAG'][i] |= Z_FLAG['DISCREPANCY']
 
-        # Z_FLAG: propagate NED_FLAG when NED is the *sole* redshift measurement
-        # (no LVD or DESI value at all, so DISCREPANCY above can never fire and
-        # would otherwise silently miss a still-suspect/unresolved NED redshift).
+        # Z_FLAG: propagate NED_Z_FLAG when NED is the *sole* redshift
+        # measurement (no LVD, DESI, or SDSS value at all, so DISCREPANCY
+        # above can never fire and would otherwise silently miss a
+        # still-suspect/unresolved/censored NED redshift).
         if len(z_valid) == 1 and zivar_ned > 0.:
-            ned_flag = int(ned_arrs['NED_FLAG'][i]) if 'NED_FLAG' in ned_arrs else 0
-            if ned_flag & NED_FLAG_Z_SUSPECT:
-                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_NED_SUSPECT
-            if ned_flag & NED_FLAG_Z_UNRESOLVED:
-                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_NED_UNRESOLVED
+            ned_zflag = int(ned_arrs['NED_Z_FLAG'][i]) if 'NED_Z_FLAG' in ned_arrs else 0
+            if ned_zflag & NED_Z_FLAG['Z_SUSPECT']:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG['NED_SUSPECT']
+            if ned_zflag & NED_Z_FLAG['Z_UNRESOLVED']:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG['NED_UNRESOLVED']
+            if ned_zflag & NED_Z_FLAG['Z_MISSING']:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG['NED_MISSING']
+            if ned_zflag & NED_Z_FLAG['Z_CENSORED_PHOTOZ']:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG['NED_CENSORED_PHOTOZ']
+            if ned_zflag & NED_Z_FLAG['Z_CENSORED_SDSS']:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG['NED_CENSORED_SDSS']
 
-        # Adopted distance: LVD preferred, then NED
+        # Adopted distance: NED_DIRECT (gold-tier) > LVD > NED (mean).
+        # A 4th tier (ZCOSMO, Hubble-flow from Z_COSMO) fills everything
+        # still unset in a post-pass below, once Z_COSMO is available.
+        dist_ned_direct      = ned_arrs['DIST_NED_DIRECT'][i]
+        dist_ivar_ned_direct = ned_arrs['DIST_IVAR_NED_DIRECT'][i]
+        method_ned_direct    = ned_arrs['DIST_NED_DIRECT_METHOD'][i]
         dist_ned      = ned_arrs['DIST_NED'][i]
         dist_ivar_ned = ned_arrs['DIST_IVAR_NED'][i]
         dist_lvd      = dist_arrs['DIST_LVD'][i]
         dist_ivar_lvd = dist_arrs['DIST_IVAR_LVD'][i]
-        if dist_lvd > 0.:
-            dist_arrs['DIST'][i]      = dist_lvd
-            dist_arrs['DIST_IVAR'][i] = dist_ivar_lvd
-            dist_arrs['DIST_REF'][i]  = 'LVD'
+        if dist_ned_direct > 0.:
+            dist_arrs['DIST'][i]        = dist_ned_direct
+            dist_arrs['DIST_IVAR'][i]   = dist_ivar_ned_direct
+            dist_arrs['DIST_REF'][i]    = 'NED_DIRECT'
+            dist_arrs['DIST_METHOD'][i] = method_ned_direct.upper()
+        elif dist_lvd > 0.:
+            dist_arrs['DIST'][i]        = dist_lvd
+            dist_arrs['DIST_IVAR'][i]   = dist_ivar_lvd
+            dist_arrs['DIST_REF'][i]    = 'LVD'
+            dist_arrs['DIST_METHOD'][i] = lvd_method_arr[i]
         elif dist_ned > 0.:
-            dist_arrs['DIST'][i]      = dist_ned
-            dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
-            dist_arrs['DIST_REF'][i]  = 'NED'
+            dist_arrs['DIST'][i]        = dist_ned
+            dist_arrs['DIST_IVAR'][i]   = dist_ivar_ned   # may be 0. if no error
+            dist_arrs['DIST_REF'][i]    = 'NED'
+            dist_arrs['DIST_METHOD'][i] = 'NED_MEAN'
+
+    # --- Consensus override: DESI outlier vs. an agreeing SDSS/NED pair ----
+    n_consensus = 0
+    if z_ned_arr is not None and zivar_ned_arr is not None:
+        z_desi, z_sdss = desi_arrs['Z_DESI'], sdss_arrs['Z_SDSS']
+        three_valid = ((desi_arrs['Z_IVAR_DESI'] > 0.) &
+                       (sdss_arrs['Z_IVAR_SDSS'] > 0.) & (zivar_ned_arr > 0.))
+        agree_ds = _vdiff_kms(z_desi, z_sdss)    <= vdiff_threshold
+        agree_dn = _vdiff_kms(z_desi, z_ned_arr) <= vdiff_threshold
+        agree_sn = _vdiff_kms(z_sdss, z_ned_arr) <= vdiff_threshold
+        consensus_mask = three_valid & ~agree_ds & ~agree_dn & agree_sn
+        n_consensus = int(np.sum(consensus_mask))
+        if n_consensus:
+            adopted_arrs['Z'][consensus_mask]      = z_sdss[consensus_mask]
+            adopted_arrs['Z_IVAR'][consensus_mask] = sdss_arrs['Z_IVAR_SDSS'][consensus_mask]
+            adopted_arrs['Z_REF'][consensus_mask]  = 'SDSS'
+            adopted_arrs['Z_FLAG'][consensus_mask] = Z_FLAG['CONSENSUS_OVERRIDE']
+    log.info(f'  Consensus override (DESI outlier, SDSS+NED agree): {n_consensus:,d} objects')
+
+    # --- Automatic NED override for high-z DESI/SDSS (see docstring) -------
+    n_auto = 0
+    if z_ned_arr is not None and zivar_ned_arr is not None:
+        already_resolved = (adopted_arrs['Z_FLAG'] & Z_FLAG['CONSENSUS_OVERRIDE']) != 0
+        auto_mask = (~already_resolved &
+                    (adopted_arrs['Z'] > ned_override_zmin) &
+                    np.isin(adopted_arrs['Z_REF'], ['DESI', 'SDSS']) &
+                    (zivar_ned_arr > 0.))
+        n_auto = int(np.sum(auto_mask))
+    if n_auto:
+        adopted_arrs['Z'][auto_mask]      = z_ned_arr[auto_mask]
+        adopted_arrs['Z_IVAR'][auto_mask] = zivar_ned_arr[auto_mask]
+        adopted_arrs['Z_REF'][auto_mask]  = 'NED'
+        adopted_arrs['Z_FLAG'][auto_mask] = Z_FLAG['AUTO_NED_OVERRIDE']
+    log.info(f'  Auto NED override (DESI/SDSS Z>{ned_override_zmin:g}): {n_auto:,d} objects')
+
+    # --- Apply VI worksheet overrides (see load_vi_redshifts) --------------
+    if vi_lookup:
+        n_vi = {'ok': 0, 'discard': 0, 'override': 0}
+        sgaid_arr = np.array(beta['SGAID'])
+        for i, sid in enumerate(sgaid_arr):
+            vi = vi_lookup.get(int(sid))
+            if vi is None:
+                continue
+            n_vi[vi['status']] += 1
+            if vi['status'] == 'discard':
+                adopted_arrs['Z'][i]      = 0.
+                adopted_arrs['Z_IVAR'][i] = 0.
+                adopted_arrs['Z_REF'][i]  = ''
+            elif vi['status'] == 'override':
+                adopted_arrs['Z'][i]      = float(vi['z'])
+                adopted_arrs['Z_IVAR'][i] = float(vi['z_ivar'])
+                adopted_arrs['Z_REF'][i]  = 'VI'
+            adopted_arrs['Z_FLAG'][i] = Z_FLAG['VI_REVIEWED']
+        log.info(f'  VI applied: {n_vi["ok"]:,d} ok, {n_vi["discard"]:,d} discarded, '
+                 f'{n_vi["override"]:,d} overridden')
+
+    # --- Peculiar-velocity-corrected ("cosmological") redshift, via pvhub -
+    cosmo_arrs = {
+        'Z_COSMO':      np.zeros(n, np.float64),
+        'Z_COSMO_IVAR': np.zeros(n, np.float64),
+    }
+    has_z = adopted_arrs['Z_IVAR'] > 0.
+    n_has_z = int(np.sum(has_z))
+    if n_has_z:
+        ra_z    = np.array(beta['RA'])[has_z]
+        dec_z   = np.array(beta['DEC'])[has_z]
+        z_z     = adopted_arrs['Z'][has_z]
+        zivar_z = adopted_arrs['Z_IVAR'][has_z]
+
+        zcmb_z = _helio_to_cmb_z(ra_z, dec_z, z_z)
+        vcmb_z = C_LIGHT * zcmb_z
+
+        # Default (also the fallback beyond pvhub's domain): CMB-frame
+        # redshift, no flow-field peculiar-velocity correction applied.
+        zcosmo_z      = zcmb_z.copy()
+        zcosmo_ivar_z = zivar_z.copy()
+
+        in_pvhub = vcmb_z < PVHUB_VCMB_MAX_KMS
+        n_pvhub  = int(np.sum(in_pvhub))
+        if n_pvhub and get_models is not None:
+            ra_pv    = ra_z[in_pvhub]
+            dec_pv   = dec_z[in_pvhub]
+            zcmb_pv  = zcmb_z[in_pvhub]
+            zivar_pv = zivar_z[in_pvhub]
+
+            pv_models = []
+            for model_class in get_models():
+                try:
+                    model = model_class()
+                    pv = np.asarray(model.calculate_pv(ra_pv, dec_pv, zcmb_pv), dtype=np.float64)
+                except Exception as e:
+                    log.warning(f'  pvhub model {model_class.__name__} failed, skipping: {e}')
+                    continue
+                pv_models.append(pv)
+
+            if pv_models:
+                pv_stack = np.vstack(pv_models)  # (n_models, n_pvhub)
+                n_valid  = np.sum(np.isfinite(pv_stack), axis=0)
+                # Columns where every model failed are all-NaN; nanmean/nanstd
+                # warn ("Mean of empty slice", "Degrees of freedom <= 0") but
+                # correctly return NaN, which `have_pv` below already handles.
+                with np.errstate(invalid='ignore'), warnings.catch_warnings():
+                    warnings.simplefilter('ignore', category=RuntimeWarning)
+                    pv_mean = np.nanmean(pv_stack, axis=0)
+                    pv_std  = np.nanstd(pv_stack, axis=0)
+                pv_std[n_valid < 2] = 0.  # no model-scatter estimate from <2 models
+
+                have_pv = np.isfinite(pv_mean)
+                zcosmo_pv = zcmb_pv.copy()
+                zcosmo_pv[have_pv] = (1. + zcmb_pv[have_pv]) / (1. + pv_mean[have_pv] / C_LIGHT) - 1.
+
+                zerr_meas  = 1. / np.sqrt(zivar_pv)
+                zerr_model = pv_std / C_LIGHT
+                zerr_total = np.sqrt(zerr_meas**2 + zerr_model**2)
+                zcosmo_ivar_pv = np.where(have_pv, 1. / zerr_total**2, zivar_pv)
+
+                zcosmo_z[in_pvhub]      = zcosmo_pv
+                zcosmo_ivar_z[in_pvhub] = zcosmo_ivar_pv
+        elif n_pvhub and get_models is None:
+            log.warning(f'  pvhub not installed -- Z_COSMO will carry the CMB-frame '
+                        f'redshift with no peculiar-velocity correction for '
+                        f'{n_pvhub:,d} objects with v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s '
+                        f'(see etc/README.md, "Optional: pvhub")')
+
+        cosmo_arrs['Z_COSMO'][has_z]      = zcosmo_z
+        cosmo_arrs['Z_COSMO_IVAR'][has_z] = zcosmo_ivar_z
+        log.info(f'  Z_COSMO: {n_has_z:,d}/{n:,d} objects with Z_IVAR>0, '
+                 f'{n_pvhub:,d} within pvhub domain (v_cmb < {PVHUB_VCMB_MAX_KMS:.0f} km/s)')
+
+    # --- Adopted distance, 4th tier: Hubble flow from Z_COSMO (H0=h0) ------
+    # Only fills objects that got nothing from NED_DIRECT/LVD/NED above and
+    # have a usable Z_COSMO; objects with no redshift at all (Z_IVAR=0 ->
+    # Z_COSMO=0) still get no distance.
+    zcosmo      = cosmo_arrs['Z_COSMO']
+    zcosmo_ivar = cosmo_arrs['Z_COSMO_IVAR']
+    use_hflow = (dist_arrs['DIST'] <= 0.) & (zcosmo > 0.) & (zcosmo_ivar > 0.)
+    n_hflow = int(np.sum(use_hflow))
+    if n_hflow:
+        d_hflow    = C_LIGHT * zcosmo[use_hflow] / h0
+        # sigma_D = (c/H0) * sigma_z = (c/H0) / sqrt(Z_COSMO_IVAR)
+        # DIST_IVAR = 1/sigma_D**2 = H0**2 * Z_COSMO_IVAR / c**2
+        ivar_hflow = (h0**2) * zcosmo_ivar[use_hflow] / C_LIGHT**2
+        dist_arrs['DIST'][use_hflow]        = np.float32(d_hflow)
+        dist_arrs['DIST_IVAR'][use_hflow]   = np.float32(ivar_hflow)
+        dist_arrs['DIST_REF'][use_hflow]    = 'ZCOSMO'
+        dist_arrs['DIST_METHOD'][use_hflow] = 'HUBBLE_FLOW'
+    log.info(f'  Hubble-flow distance (H0={h0:g} km/s/Mpc): {n_hflow:,d} objects')
+
+    # --- Adopted DIST_IVAR floor: sources with no reported uncertainty ----
+    # (most commonly LVD -- see the assessment in the distance-quality work)
+    # get a floor of dist_ivar_floor * DIST instead of DIST_IVAR=0. Only the
+    # adopted DIST_IVAR is floored; the per-source diagnostic columns
+    # (DIST_IVAR_LVD, DIST_IVAR_NED_DIRECT, DIST_IVAR_NED) are left as raw
+    # values (0 = "source reported no error"), preserving that provenance.
+    missing_ivar = (dist_arrs['DIST'] > 0.) & (dist_arrs['DIST_IVAR'] == 0.)
+    n_floored = int(np.sum(missing_ivar))
+    if n_floored:
+        sigma_floor = dist_ivar_floor * dist_arrs['DIST'][missing_ivar]
+        dist_arrs['DIST_IVAR'][missing_ivar] = np.float32(1. / sigma_floor**2)
+    log.info(f'  DIST_IVAR floor ({dist_ivar_floor:.0%} of DIST): {n_floored:,d} objects')
 
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
     crossids_col = ned_arrs.get('CROSSIDS')
@@ -1156,6 +1789,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     for name, dtype, unit in DESI_COLS:
         out.add_column(Column(desi_arrs[name], name=name, unit=unit))
 
+    # SDSS columns
+    for name, dtype, unit in SDSS_COLS:
+        out.add_column(Column(sdss_arrs[name], name=name, unit=unit))
+
     # NED columns: Z_IVAR_NED after Z_NED; DIST_IVAR_NED after DIST_NED
     for src, dst, unit in NED_CARRY:
         if dst not in ned_arrs:
@@ -1165,6 +1802,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             out.add_column(Column(ned_arrs['Z_IVAR_NED'],    name='Z_IVAR_NED'))
         elif dst == 'DIST_NED':
             out.add_column(Column(ned_arrs['DIST_IVAR_NED'], name='DIST_IVAR_NED',
+                                  unit=u.Mpc**-2))
+        elif dst == 'DIST_NED_DIRECT':
+            out.add_column(Column(ned_arrs['DIST_IVAR_NED_DIRECT'], name='DIST_IVAR_NED_DIRECT',
                                   unit=u.Mpc**-2))
 
     # Adopted redshift
@@ -1178,6 +1818,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # LVD redshifts
     for name, dtype, unit in LVD_Z_COLS:
         out.add_column(Column(lvd_z_arrs[name], name=name, unit=unit))
+
+    # Peculiar-velocity-corrected ("cosmological") redshift
+    for name, dtype, unit in COSMO_COLS:
+        out.add_column(Column(cosmo_arrs[name], name=name, unit=unit))
 
     # Drop columns not wanted in the output
     for col in DROP_COLS:
@@ -1206,17 +1850,39 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  LARGESHIFT recomputed (threshold={MAXSHIFT_ARCSEC}"): '
                  f'{int(np.sum((ebit & _LARGESHIFT) != 0)):,d} objects flagged')
 
+    # Default ("nominal") photometry -- see DEFAULT_PHOT_METHOD above.
+    flux_method_arr = np.full(len(out), DEFAULT_PHOT_METHOD, dtype='U8')
+    flux_arrs, ivar_arrs, sma_flux = _default_photometry(out, all_bands, flux_method_arr)
+    for filt in all_bands:
+        out.add_column(Column(flux_arrs[filt], name=f'FLUX_{filt}', unit=u.nanomaggy))
+        out.add_column(Column(ivar_arrs[filt], name=f'FLUX_IVAR_{filt}', unit=u.nanomaggy**-2))
+    out.add_column(Column(sma_flux, name='SMA_FLUX', unit=u.arcsec))
+    out.add_column(Column(flux_method_arr, name='FLUX_REF'))
+
     # Apply column ordering
     out = _reorder_cols(out)
+
+    # Split off the full aperture/CoG photometry grid into ELLIPSEPHOT,
+    # keeping only the nominal FLUX_{band}/FLUX_IVAR_{band} in SGA2025.
+    ellipsephot_cols = ['SGAID'] + [c for c in ELLIPSEPHOT_COL_ORDER if c in out.colnames]
+    ellipsephot = out[ellipsephot_cols]
+    out = out[[c for c in out.colnames if c not in set(ELLIPSEPHOT_COL_ORDER)]]
+
+    # Duplicate SGAID as the leading TRACTOR column too (it's already
+    # present as REF_ID, by construction identical to SGAID), so the
+    # extension is self-describing if ever split off from SGA2025.
+    tractor.add_column(Column(np.asarray(beta['SGAID']), name='SGAID'), index=0)
 
     # --- Write output ----------------------------------------------------
     os.makedirs(outdir, exist_ok=True)
     version = SGA_version(catalog=True)
     outpath = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
     vals, names, units = table_to_fitsio(out)
+    ephot_vals, ephot_names, ephot_units = table_to_fitsio(ellipsephot)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(ephot_vals, names=ephot_names, units=ephot_units, extname='ELLIPSEPHOT')
         F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
     log.info(f'  Wrote {outpath}')
 
@@ -1226,23 +1892,36 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     flag_arr   = adopted_arrs['Z_FLAG']
 
     n_src_desi  = int(np.sum(src_arr == 'DESI'))
+    n_src_sdss  = int(np.sum(src_arr == 'SDSS'))
     n_src_lvd   = int(np.sum(src_arr == 'LVD'))
     n_src_ned   = int(np.sum(src_arr == 'NED'))
     n_src_none  = int(np.sum(src_arr == ''))
-    n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY)    != 0))
-    n_ned_susp  = int(np.sum((flag_arr & Z_FLAG_NED_SUSPECT)    != 0))
-    n_ned_unres = int(np.sum((flag_arr & Z_FLAG_NED_UNRESOLVED) != 0))
+    n_disc      = int(np.sum((flag_arr & Z_FLAG['DISCREPANCY'])    != 0))
+    n_ned_susp  = int(np.sum((flag_arr & Z_FLAG['NED_SUSPECT'])    != 0))
+    n_ned_unres = int(np.sum((flag_arr & Z_FLAG['NED_UNRESOLVED']) != 0))
+    n_ned_miss  = int(np.sum((flag_arr & Z_FLAG['NED_MISSING'])    != 0))
+    n_ned_cphoto = int(np.sum((flag_arr & Z_FLAG['NED_CENSORED_PHOTOZ']) != 0))
+    n_ned_csdss  = int(np.sum((flag_arr & Z_FLAG['NED_CENSORED_SDSS'])   != 0))
+    n_consensus_ov = int(np.sum((flag_arr & Z_FLAG['CONSENSUS_OVERRIDE']) != 0))
+    n_auto_ned  = int(np.sum((flag_arr & Z_FLAG['AUTO_NED_OVERRIDE']) != 0))
+    n_vi_rev    = int(np.sum((flag_arr & Z_FLAG['VI_REVIEWED'])    != 0))
     n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
     n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
 
     n_dist_ned  = int(np.sum(ned_arrs['DIST_NED'] > 0.))
     n_dist_ivar = int(np.sum(ned_arrs['DIST_IVAR_NED'] > 0.))
+    n_dist_ned_direct      = int(np.sum(ned_arrs['DIST_NED_DIRECT'] > 0.))
+    n_dist_ivar_ned_direct = int(np.sum(ned_arrs['DIST_IVAR_NED_DIRECT'] > 0.))
     n_dist_lvd  = int(np.sum(dist_arrs['DIST_LVD'] > 0.))
     n_dist_ivar_lvd = int(np.sum(dist_arrs['DIST_IVAR_LVD'] > 0.))
     n_dist_adopted  = int(np.sum(dist_arrs['DIST'] > 0.))
-    n_dist_ref_lvd  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'LVD'))
-    n_dist_ref_ned  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'NED'))
+    dist_ref_arr    = np.array(dist_arrs['DIST_REF'])
+    n_dist_ref_ned_direct = int(np.sum(dist_ref_arr == 'NED_DIRECT'))
+    n_dist_ref_lvd        = int(np.sum(dist_ref_arr == 'LVD'))
+    n_dist_ref_ned        = int(np.sum(dist_ref_arr == 'NED'))
+    n_dist_ref_zcosmo     = int(np.sum(dist_ref_arr == 'ZCOSMO'))
+    n_dist_noivar = int(np.sum((dist_arrs['DIST'] > 0.) & (dist_arrs['DIST_IVAR'] == 0.)))
 
     emit(f'\n--- {region} summary ({n:,d} galaxies) ---')
     emit(f'  desi_max_sep={desi_max_sep:.1f}"  vdiff_threshold={vdiff_threshold:.0f} km/s')
@@ -1251,25 +1930,39 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
               ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
     emit()
     emit(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    emit(f'  Z_REF = SDSS : {n_src_sdss:>8,d}  ({pct(n_src_sdss):5.1f}%)')
     emit(f'  Z_REF = LVD  : {n_src_lvd:>8,d}  ({pct(n_src_lvd):5.1f}%)')
     emit(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
     emit(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
     emit()
     emit(f'  Z_LVD present (vlos_systemic): {n_z_lvd:>8,d}  ({pct(n_z_lvd):5.1f}%)')
     emit(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
+    emit(f'  SAMPLE LVD bit newly set (name match, not already flagged): '
+         f'{n_lvd_sample_added:>8,d}  ({pct(n_lvd_sample_added):5.1f}%)')
     emit()
     emit(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
     emit(f'  Z_FLAG NED suspect (sole meas): {n_ned_susp:>8,d}  ({pct(n_ned_susp):5.1f}%)')
     emit(f'  Z_FLAG NED unresolved (sole) : {n_ned_unres:>8,d}  ({pct(n_ned_unres):5.1f}%)')
+    emit(f'  Z_FLAG NED missing (sole)    : {n_ned_miss:>8,d}  ({pct(n_ned_miss):5.1f}%)')
+    emit(f'  Z_FLAG NED censored photoz (sole): {n_ned_cphoto:>8,d}  ({pct(n_ned_cphoto):5.1f}%)')
+    emit(f'  Z_FLAG NED censored SDSS (sole)  : {n_ned_csdss:>8,d}  ({pct(n_ned_csdss):5.1f}%)')
+    emit(f'  Z_FLAG consensus override    : {n_consensus_ov:>8,d}  ({pct(n_consensus_ov):5.1f}%)')
+    emit(f'  Z_FLAG auto NED override     : {n_auto_ned:>8,d}  ({pct(n_auto_ned):5.1f}%)')
+    emit(f'  Z_FLAG VI-reviewed           : {n_vi_rev:>8,d}  ({pct(n_vi_rev):5.1f}%)')
     emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     emit()
+    emit(f'  DIST_NED_DIRECT (gold) present: {n_dist_ned_direct:>8,d}  ({pct(n_dist_ned_direct):5.1f}%)')
+    emit(f'  DIST_NED_DIRECT with IVAR    : {n_dist_ivar_ned_direct:>8,d}  ({pct(n_dist_ivar_ned_direct):5.1f}%)')
     emit(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
     emit(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
     emit(f'  DIST_LVD present             : {n_dist_lvd:>8,d}  ({pct(n_dist_lvd):5.1f}%)')
     emit(f'  DIST_LVD with IVAR           : {n_dist_ivar_lvd:>8,d}  ({pct(n_dist_ivar_lvd):5.1f}%)')
     emit(f'  Adopted DIST present         : {n_dist_adopted:>8,d}  ({pct(n_dist_adopted):5.1f}%)')
+    emit(f'    DIST_REF = NED_DIRECT      : {n_dist_ref_ned_direct:>8,d}')
     emit(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
     emit(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
+    emit(f'    DIST_REF = ZCOSMO          : {n_dist_ref_zcosmo:>8,d}')
+    emit(f'  Adopted DIST but DIST_IVAR=0 : {n_dist_noivar:>8,d}  ({pct(n_dist_noivar):5.1f}%)')
     emit()
     emit('  NSPEC_DESI distribution:')
     nspec = desi_arrs['NSPEC_DESI']
@@ -1289,15 +1982,17 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 GOOD_BANDS = ['G', 'R', 'I', 'Z']
 
 def merge_regions(outdir, lines=None):
-    """Merge the per-region SGA2025-{region}-{version}.fits catalogs into a
-    single SGA2025-{version}.fits catalog.
+    """Merge the per-region SGA2025-{region}-{version}.fits catalogs (each
+    with SGA2025/ELLIPSEPHOT/TRACTOR extensions) into a single
+    SGA2025-{version}.fits catalog with the same three extensions.
 
     Objects with data in both regions (REGION has both dr11-south and
     dr11-north bits set) are deduplicated by keeping the row with more
-    "good" bands (FMASKED_AP00_{band} < 0.5 for band in GOOD_BANDS). Ties
-    are broken by preferring whichever side has a good r-band when only
-    one does, then by defaulting to dr11-south -- dr11-north's z-band is
-    substantially worse, so ties should favor south in nearly all cases.
+    "good" bands (ELLIPSEPHOT's FMASKED_AP00_{band} < 0.5 for band in
+    GOOD_BANDS). Ties are broken by preferring whichever side has a good
+    r-band when only one does, then by defaulting to dr11-south --
+    dr11-north's z-band is substantially worse, so ties should favor south
+    in nearly all cases.
 
     Objects whose REGION indicates both regions but which appear as a lone
     row (no counterpart in the other region -- some pixels overlap the
@@ -1318,23 +2013,28 @@ def merge_regions(outdir, lines=None):
 
     emit('=== merging dr11-south + dr11-north ===')
 
-    regions  = ['dr11-south', 'dr11-north']
-    cats     = {}
-    tractors = {}
+    regions      = ['dr11-south', 'dr11-north']
+    cats         = {}
+    ellipsephots = {}
+    tractors     = {}
     for region in regions:
         path = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
         emit(f'  Loading {path}')
-        cats[region]     = Table(fitsio.read(path, ext='SGA2025'))
-        tractors[region] = Table(fitsio.read(path, ext='TRACTOR'))
+        cats[region]         = Table(fitsio.read(path, ext='SGA2025'))
+        ellipsephots[region] = Table(fitsio.read(path, ext='ELLIPSEPHOT'))
+        tractors[region]     = Table(fitsio.read(path, ext='TRACTOR'))
 
     src = np.concatenate([
         np.full(len(cats[region]), REGIONBITS[region], dtype=np.int16)
         for region in regions
     ])
-    cat     = vstack([cats[r]     for r in regions], join_type='exact')
-    tractor = vstack([tractors[r] for r in regions], join_type='exact')
-    assert len(cat) == len(tractor)
+    cat         = vstack([cats[r]         for r in regions], join_type='exact')
+    ellipsephot = vstack([ellipsephots[r] for r in regions], join_type='exact')
+    tractor     = vstack([tractors[r]     for r in regions], join_type='exact')
+    assert len(cat) == len(ellipsephot) == len(tractor)
+    assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(ellipsephot['SGAID']))
     assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(tractor['REF_ID']))
+    assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(tractor['SGAID']))
 
     n_south, n_north = len(cats['dr11-south']), len(cats['dr11-north'])
     emit(f'  {n_south:,d} dr11-south + {n_north:,d} dr11-north = {len(cat):,d} rows before dedup')
@@ -1360,8 +2060,8 @@ def merge_regions(outdir, lines=None):
     both = (region_col & REGIONBITS['dr11-south'] != 0) & (region_col & REGIONBITS['dr11-north'] != 0)
     ngood = np.zeros(len(cat), dtype=np.int8)
     for b in GOOD_BANDS:
-        ngood += (np.asarray(cat[f'FMASKED_AP00_{b}']) < 0.5).astype(np.int8)
-    rgood = np.asarray(cat['FMASKED_AP00_R']) < 0.5
+        ngood += (np.asarray(ellipsephot[f'FMASKED_AP00_{b}']) < 0.5).astype(np.int8)
+    rgood = np.asarray(ellipsephot['FMASKED_AP00_R']) < 0.5
 
     keep = np.ones(len(cat), dtype=bool)
     n_dup = n_south_win = n_north_win = n_tie_rband = n_tie_south = 0
@@ -1389,16 +2089,19 @@ def merge_regions(outdir, lines=None):
     emit(f'    tied on good bands, resolved by r-band: {n_tie_rband:,d}')
     emit(f'    tied on good bands and r-band, defaulted to south: {n_tie_south:,d}')
 
-    merged         = _reorder_cols(cat[keep])
-    merged_tractor = tractor[keep]
+    merged             = _reorder_cols(cat[keep])
+    merged_ellipsephot = _reorder_cols(ellipsephot[keep], order=['SGAID'] + ELLIPSEPHOT_COL_ORDER)
+    merged_tractor     = tractor[keep]
     emit(f'  {len(merged):,d} galaxies in merged catalog')
 
     # --- Write output --------------------------------------------------
     outpath = os.path.join(outdir, f'SGA2025-{version}.fits')
     vals, names, units = table_to_fitsio(merged)
+    ephot_vals, ephot_names, ephot_units = table_to_fitsio(merged_ellipsephot)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(merged_tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(ephot_vals, names=ephot_names, units=ephot_units, extname='ELLIPSEPHOT')
         F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
     emit(f'  Wrote {outpath}')
 
@@ -1422,9 +2125,9 @@ def main():
     parser.add_argument('--vdiff-threshold', type=float, default=1000.,
                         help='DESI/NED velocity discrepancy threshold in km/s '
                              '(default: 1000)')
-    parser.add_argument('--desi-max-sep', type=float, default=3.,
+    parser.add_argument('--desi-max-sep', type=float, default=3.5,
                         help='Max separation between SGA center and DESI '
-                             'TARGET_RA/DEC in arcsec (default: 3)')
+                             'TARGET_RA/DEC in arcsec (default: 3.5)')
     parser.add_argument('--lvd-catalog',
                         help='Path to LVD ECSV catalog (e.g. lvd_comb_all_v1.1.0.ecsv); '
                              'distances in kpc converted to Mpc')
@@ -1432,6 +2135,22 @@ def main():
                         help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
                              'RA_INIT/DEC_INIT/DIAM_INIT/INIT_REF/BA_INIT/PA_INIT '
                              'from the original parent catalog geometry')
+    parser.add_argument('--ned-override-zmin', type=float, default=0.3,
+                        help='Adopted DESI/SDSS redshifts above this value are automatically '
+                             'replaced by an independent NED measurement, if one exists '
+                             '(default: 0.3)')
+    parser.add_argument('--vi-redshifts',
+                        help='Path to a VI worksheet CSV (see SGA2025-qa-redshifts) applied '
+                             'after the normal Z/Z_IVAR/Z_REF resolution')
+    parser.add_argument('--h0', type=float, default=70.,
+                        help='Hubble constant (km/s/Mpc) for the Hubble-flow distance '
+                             '(DIST_REF=ZCOSMO), adopted from Z_COSMO for objects with no '
+                             'NED_DIRECT/LVD/NED distance (default: 70)')
+    parser.add_argument('--dist-ivar-floor', type=float, default=0.15,
+                        help='Fractional distance-uncertainty floor applied to the adopted '
+                             'DIST_IVAR wherever the source reported no uncertainty (most '
+                             'commonly LVD); empirically calibrated to the LVD-vs-gold-tier '
+                             'agreement (default: 0.15)')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
@@ -1451,7 +2170,10 @@ def main():
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
                      args.vdiff_threshold, args.desi_max_sep,
                      lvd_catalog=args.lvd_catalog,
-                     parent_nocuts=args.parent_nocuts, lines=lines)
+                     parent_nocuts=args.parent_nocuts,
+                     ned_override_zmin=args.ned_override_zmin,
+                     vi_redshifts=args.vi_redshifts, lines=lines, h0=args.h0,
+                     dist_ivar_floor=args.dist_ivar_floor)
 
     if args.region is None:
         merge_regions(args.outdir, lines=lines)
