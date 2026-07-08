@@ -34,7 +34,7 @@ OVERRIDE   The adopted Z disagrees with every other available measurement
            problem). The alternative value is already sitting in the same
            row; decide which (if either) is right.
 
-DISCARD_UNRESOLVED   Z_REF = NED and NED_FLAG has Z_UNRESOLVED set:
+DISCARD_UNRESOLVED   Z_REF = NED and NED_Z_FLAG has Z_UNRESOLVED set:
            SGA2025-ned-merge already tried and failed to find a confident
            replacement among NED's own redshift measurements. No
            alternative exists in the catalog; the only options are to
@@ -76,24 +76,17 @@ import argparse
 import numpy as np
 from astropy.table import Column
 
-from SGA.SGA import read_sga_sample
+from SGA.SGA import read_sga_sample, NED_Z_FLAG, Z_FLAG
 from SGA.util import C_LIGHT
 from SGA.logger import log
 
-# Must match bin/SGA2025-ned-merge.
-NED_FLAG_Z_UNRESOLVED = 0x10
-
-# Must match bin/SGA2025-build-catalog.
-Z_FLAG_CONSENSUS_OVERRIDE = 0x10
-Z_FLAG_AUTO_NED_OVERRIDE  = 0x20
-Z_FLAG_VI_REVIEWED        = 0x40
-Z_FLAG_ALREADY_RESOLVED = (Z_FLAG_CONSENSUS_OVERRIDE | Z_FLAG_AUTO_NED_OVERRIDE |
-                          Z_FLAG_VI_REVIEWED)
+Z_FLAG_ALREADY_RESOLVED = (Z_FLAG['CONSENSUS_OVERRIDE'] | Z_FLAG['AUTO_NED_OVERRIDE'] |
+                          Z_FLAG['VI_REVIEWED'])
 
 SOURCES = ['LVD', 'DESI', 'SDSS', 'NED']   # must match the Z_{SRC}/Z_IVAR_{SRC} columns
 
 CANDIDATE_COLS = [
-    'SGAID', 'GALAXY', 'Z_FLAG', 'NED_FLAG', 'Z_REF', 'Z',
+    'SGAID', 'GALAXY', 'Z_FLAG', 'NED_FLAG', 'NED_Z_FLAG', 'Z_REF', 'Z',
     'Z_DESI', 'Z_SDSS', 'Z_NED', 'Z_LVD',
     'Z_IVAR_DESI', 'Z_IVAR_SDSS', 'Z_IVAR_NED', 'Z_IVAR_LVD',
 ]
@@ -102,7 +95,7 @@ VI_COLS = ['VI_STATUS', 'VI_Z', 'VI_Z_IVAR', 'VI_NOTES']
 
 def _vdiff_kms(z1, z2):
     """Rest-frame velocity difference (km/s) between two redshifts; array or
-    scalar. Same formula as SGA2025-build-catalog's Z_FLAG_DISCREPANCY check."""
+    scalar. Same formula as SGA2025-build-catalog's Z_FLAG DISCREPANCY check."""
     return C_LIGHT * np.abs(z1 - z2) / (1. + np.minimum(z1, z2))
 
 
@@ -149,7 +142,7 @@ def main():
     ivar     = np.array(t['Z_IVAR'])
     zref     = np.array(t['Z_REF'])
     zflag    = np.array(t['Z_FLAG'])
-    nedflag  = np.array(t['NED_FLAG'])
+    ned_zflag = np.array(t['NED_Z_FLAG'])
     z_src    = {src: np.array(t[f'Z_{src}'])      for src in SOURCES}
     ivar_src = {src: np.array(t[f'Z_IVAR_{src}']) for src in SOURCES}
 
@@ -178,7 +171,7 @@ def main():
     override = hi & ~already_resolved & any_other_valid & ~corroborated
 
     discard_unresolved = (hi & ~already_resolved & (zref == 'NED') &
-                         ((nedflag & NED_FLAG_Z_UNRESOLVED) != 0))
+                         ((ned_zflag & NED_Z_FLAG['Z_UNRESOLVED']) != 0))
     discard_unverified = (hi & ~already_resolved & (n_valid == 1) &
                           np.isin(zref, ['DESI', 'SDSS']) & (z >= args.sole_threshold))
 

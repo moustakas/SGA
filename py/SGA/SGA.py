@@ -67,6 +67,41 @@ UNWISEMASKBITS = dict(
 SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
 APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
+# NED cross-match quality (set in SGA2025-ned-merge; purely about whether/how
+# the byname or bypos NED query resolved a match -- see NED_Z_FLAG below for
+# NED's own redshift-resolution bits).
+NED_FLAG = dict(
+    LARGE_SEP = 2**0,   # byname positional offset > threshold; bypos used unless name-confirmed
+    BYNAME_FAIL = 2**1, # byname query error or no match; bypos used instead
+    BYPOS_FAIL = 2**2,  # bypos query also failed; NED cross-match result may be incomplete
+)
+
+# How NED's own default NED_Z was arrived at (set in SGA2025-ned-merge).
+# Distinct from NED_FLAG (cross-match quality, above) and from Z_FLAG (SGA's
+# own adopted-redshift resolution across LVD/DESI/SDSS/NED, below) -- these
+# three bitmasks answer three different questions.
+NED_Z_FLAG = dict(
+    Z_SUSPECT = 2**0,         # adopted NED_Z > --z-swap-threshold; alternates considered
+    Z_UNRESOLVED = 2**1,      # suspect/missing/censored, but no confident replacement found
+    Z_MISSING = 2**2,         # no default NED_Z at all; adopted from the full redshift list instead
+    Z_CENSORED_PHOTOZ = 2**3, # adopted default was a photometric-redshift measurement; discarded
+    Z_CENSORED_SDSS = 2**4,   # adopted default came from an SDSS-compilation reference; discarded
+)
+
+# Adopted-redshift resolution across all sources (set in SGA2025-build-catalog).
+Z_FLAG = dict(
+    DISCREPANCY = 2**0,          # any two measured redshifts (LVD, DESI, SDSS, NED) disagree
+    NED_SUSPECT = 2**1,          # sole measurement is NED; its NED_Z_FLAG has Z_SUSPECT set
+    NED_UNRESOLVED = 2**2,       # as NED_SUSPECT, and NED_Z_FLAG also has Z_UNRESOLVED set
+    NED_MISSING = 2**3,          # sole measurement is NED; its NED_Z_FLAG has Z_MISSING set
+    CONSENSUS_OVERRIDE = 2**4,   # DESI disagreed with an agreeing SDSS/NED pair; replaced by SDSS
+    AUTO_NED_OVERRIDE = 2**5,    # adopted DESI/SDSS Z > --ned-override-zmin replaced by NED
+    NED_CENSORED_PHOTOZ = 2**6,  # sole measurement is NED; its NED_Z_FLAG has Z_CENSORED_PHOTOZ set
+    NED_CENSORED_SDSS = 2**7,    # sole measurement is NED; its NED_Z_FLAG has Z_CENSORED_SDSS set
+    VI_REVIEWED = 2**8,          # Z/Z_IVAR/Z_REF set or confirmed by manual VI; last bit by
+                                  # convention -- the final, human-authoritative step
+)
+
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
                 catalog=False):
