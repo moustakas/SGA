@@ -121,14 +121,15 @@ def _censor_north_z(sample, flux_z):
 def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BANDS,
                    mag_max=MAG_MAX, censor_north_z=True):
     """Assemble the random-forest feature matrix from the base SGA2025
-    columns (``FLUX_{band}``, ``D26``, ``BA``, ``EBV``) -- no
-    ``ELLIPSEPHOT`` join needed.
+    columns (``FLUX_{band}``, ``MW_TRANSMISSION_{band}``, ``D26``, ``BA``)
+    -- no ``ELLIPSEPHOT`` join needed.
 
     Parameters
     ----------
     sample : :class:`~astropy.table.Table`
-        Table with ``FLUX_{band}`` for each of ``bands``, plus ``REGION``,
-        ``D26``, ``BA``, ``EBV`` (e.g. from :func:`SGA.SGA.read_sga_sample`).
+        Table with ``FLUX_{band}`` and ``MW_TRANSMISSION_{band}`` for each
+        of ``bands``, plus ``REGION``, ``D26``, ``BA`` (e.g. from
+        :func:`SGA.SGA.read_sga_sample`).
     bands : :class:`list` of :class:`str`
         Bands to form consecutive colors from (default NUV,g,r,i,z,W1,W2).
     brightness_bands : :class:`list` of :class:`str`
@@ -144,8 +145,11 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     -------
     X : :class:`~numpy.ndarray`, shape (nobj, nfeat)
         Feature matrix: consecutive colors, a fallback brightness
-        magnitude, ``D26``, ``BA``, ``EBV``, a surface-brightness proxy,
-        and one detected/not-detected flag per band.
+        magnitude, ``D26``, ``BA``, a surface-brightness proxy, and one
+        detected/not-detected flag per band. All fluxes/magnitudes are
+        Milky Way extinction-corrected via ``MW_TRANSMISSION_{band}``;
+        there is no separate ``EBV`` feature, since the dereddened
+        photometry already absorbs its effect.
     feature_names : :class:`list` of :class:`str`
     row_mask : :class:`~numpy.ndarray` of :class:`bool`, shape (nobj,)
         True where all features are finite and ``D26``/``BA`` are
@@ -169,8 +173,15 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     if censor_north_z and 'Z' in bands:
         flux['Z'] = _censor_north_z(sample, flux['Z'])
 
+    # Detection is judged on the raw (observed) flux; dereddening only
+    # rescales positive values, so it can't flip a non-detection to a
+    # detection or vice versa.
     detected = {b: flux[b] > 0 for b in bands}
-    mags = {b: _flux_to_mag(flux[b], mag_max=mag_max) for b in bands}
+
+    mw_transmission = {b: np.asarray(sample[f'MW_TRANSMISSION_{b}'], dtype=np.float64)
+                       for b in bands}
+    dered_flux = {b: flux[b] / mw_transmission[b] for b in bands}
+    mags = {b: _flux_to_mag(dered_flux[b], mag_max=mag_max) for b in bands}
 
     color_names, colors = [], []
     for b1, b2 in zip(bands[:-1], bands[1:]):
@@ -189,7 +200,6 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
 
     d26 = np.asarray(sample['D26'], dtype=np.float64)
     ba = np.asarray(sample['BA'], dtype=np.float64)
-    ebv = np.asarray(sample['EBV'], dtype=np.float64)
 
     # Average surface brightness within the D26 isophote (mag/arcsec^2),
     # using whichever band fed the brightness magnitude above.
@@ -201,8 +211,8 @@ def build_features(sample, bands=FEATURE_BANDS, brightness_bands=BRIGHTNESS_BAND
     detected_names = [f'detected_{b.lower()}' for b in bands]
     detected_arrs = [detected[b].astype(np.float64) for b in bands]
 
-    feature_names = (color_names + ['mag', 'D26', 'BA', 'EBV', 'SB'] + detected_names)
-    X = np.column_stack(colors + [brightness_mag, d26, ba, ebv, sb] + detected_arrs)
+    feature_names = (color_names + ['mag', 'D26', 'BA', 'SB'] + detected_names)
+    X = np.column_stack(colors + [brightness_mag, d26, ba, sb] + detected_arrs)
 
     row_mask = np.all(np.isfinite(X), axis=1) & (d26 > 0) & (ba > 0)
 

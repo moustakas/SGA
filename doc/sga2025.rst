@@ -895,14 +895,16 @@ We resolve a small residual of flagged redshifts (see ``Z_FLAG`` in
 We train a
 `scikit-learn RandomForestRegressor <https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html>`_
 on the subsample of galaxies with an adopted spectroscopic redshift, using
-optical/infrared colors, an apparent magnitude, surface brightness,
-isophotal diameter, axis ratio, and Galactic extinction as features.
-Apparent magnitude and surface brightness use the *r* band, falling back to
-*i* and then *g* when *r* is unavailable. We validate the model with 5-fold
-cross-validation, then retrain it on the full spectroscopic subsample and
-predict ``Z_PHOT`` for every galaxy in the catalog. ``Z_PHOT_IVAR`` is the
-inverse variance of the spread of predictions across the individual trees
-of the forest.
+Milky Way extinction-corrected optical/infrared colors, an apparent
+magnitude, surface brightness, isophotal diameter, and axis ratio as
+features. Fluxes are dereddened using the catalog's ``MW_TRANSMISSION_*``
+values before colors and magnitudes are formed, so there is no separate
+Galactic-extinction feature. Apparent magnitude and surface brightness use
+the *r* band, falling back to *i* and then *g* when *r* is unavailable. We
+validate the model with 5-fold cross-validation, then retrain it on the
+full spectroscopic subsample and predict ``Z_PHOT`` for every galaxy in
+the catalog. ``Z_PHOT_IVAR`` is the inverse variance of the spread of
+predictions across the individual trees of the forest.
 
 .. list-table::
    :header-rows: 1
@@ -911,27 +913,25 @@ of the forest.
    * - Feature
      - Importance
    * - *g* − *r*
-     - 0.4714
-   * - Apparent magnitude
-     - 0.1130
-   * - W1 − W2
-     - 0.1092
-   * - E(B−V)
-     - 0.0820
-   * - Surface brightness
-     - 0.0548
+     - 0.5698
    * - ``D26``
-     - 0.0425
+     - 0.0849
+   * - Apparent magnitude
+     - 0.0744
+   * - Surface brightness
+     - 0.0605
    * - *z* − W1
-     - 0.0398
+     - 0.0592
+   * - W1 − W2
+     - 0.0520
    * - *r* − *i*
-     - 0.0228
+     - 0.0317
    * - NUV − *g*
-     - 0.0216
-   * - ``BA``
-     - 0.0209
+     - 0.0232
    * - *i* − *z*
-     - 0.0171
+     - 0.0183
+   * - ``BA``
+     - 0.0181
 
 **Peculiar-velocity-corrected redshift (Z_COSMO, Z_COSMO_IVAR)**
 
