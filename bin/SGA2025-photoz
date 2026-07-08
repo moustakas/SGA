@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+"""SGA2025-photoz: train a random-forest photometric-redshift model on the
+SGA-2025 spectroscopic subsample (Z_IVAR>0, roughly two-thirds of the
+GROUP_PRIMARY sample) and predict Z_PHOT for every galaxy in the sample.
+
+Writes, to --outdir (default $SGA_DIR/photoz):
+  SGA2025-photoz-{version}.fits    -- SGAID, Z_PHOT, Z_PHOT_ERR, Z_PHOT_TRAINSET
+  SGA2025-photoz-{version}.joblib  -- the fitted RandomForestRegressor
+  SGA2025-photoz-{version}-qa.png  -- z_spec vs. out-of-fold z_phot
+
+This is a standalone first pass; wiring Z_PHOT/Z_PHOT_ERR into the merged
+catalog written by SGA2025-build-catalog is a deliberate follow-up once
+the model has been validated, not done here.
+"""
+import os
+import argparse
+
+import numpy as np
+import fitsio
+import joblib
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from astropy.table import Table
+
+from SGA.SGA import read_sga_sample, sga_dir, SGA_version
+from SGA.io import table_to_fitsio
+from SGA.logger import log
+from SGA.photoz import (select_spec_subsample, build_features, train_and_evaluate,
+                        fit_final_model, predict_with_uncertainty)
+
+
+def qa_plot(z_spec, z_phot_cv, diagnostics, outpath):
+    """Scatter plot of z_spec vs. out-of-fold z_phot for the training set."""
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.plot(z_spec, z_phot_cv, '.', markersize=1, alpha=0.3)
+    zmax = 1.05 * max(z_spec.max(), z_phot_cv.max())
+    ax.plot([0, zmax], [0, zmax], 'k--', lw=1)
+    ax.set_xlim(0, zmax)
+    ax.set_ylim(0, zmax)
+    ax.set_xlabel('z_spec')
+    ax.set_ylabel('z_phot (out-of-fold)')
+    ax.set_title('NMAD={:.5f}  outlier fraction={:.2f}%'.format(
+        diagnostics['nmad'], 100 * diagnostics['outlier_frac']))
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(outpath)
+    plt.close(fig)
+    log.info(f'Wrote {outpath}')
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--outdir', default=None,
+                        help='Output directory (default: $SGA_DIR/photoz)')
+    parser.add_argument('--version', default=None,
+                        help='Version suffix for output filenames '
+                             '(default: SGA_version(catalog=True))')
+    parser.add_argument('--n-estimators', type=int, default=100,
+                        help='Number of trees (default: 100)')
+    parser.add_argument('--max-depth', type=int, default=None,
+                        help='Max tree depth (default: None, unbounded)')
+    parser.add_argument('--n-folds', type=int, default=5,
+                        help='Number of cross-validation folds (default: 5)')
+    parser.add_argument('--random-state', type=int, default=1456,
+                        help='Random seed for reproducibility (default: 1456)')
+    parser.add_argument('--outlier-threshold', type=float, default=0.1,
+                        help='|dz|/(1+z_spec) threshold for the outlier-fraction '
+                             'diagnostic (default: 0.1)')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite existing output files')
+    args = parser.parse_args()
+
+    outdir = args.outdir or os.path.join(sga_dir(), 'photoz')
+    os.makedirs(outdir, exist_ok=True)
+
+    version = args.version or SGA_version(catalog=True)
+    outfits  = os.path.join(outdir, f'SGA2025-photoz-{version}.fits')
+    outmodel = os.path.join(outdir, f'SGA2025-photoz-{version}.joblib')
+    outqa    = os.path.join(outdir, f'SGA2025-photoz-{version}-qa.png')
+
+    if os.path.isfile(outfits) and not args.overwrite:
+        log.info(f'Output {outfits} exists; use --overwrite to regenerate.')
+        return
+
+    log.info('Reading the SGA2025 sample...')
+    sample, _ = read_sga_sample()
+    log.info(f'Read {len(sample):,d} GROUP_PRIMARY objects.')
+
+    X, feature_names, row_mask = build_features(sample)
+    log.info('Features: {}'.format(', '.join(feature_names)))
+    nbad = np.count_nonzero(~row_mask)
+    if nbad > 0:
+        log.info(f'{nbad:,d}/{len(sample):,d} objects have unusable features '
+                 '(bad photometry/diameter/axis-ratio) and will get no Z_PHOT.')
+
+    train_mask = select_spec_subsample(sample) & row_mask
+    ntrain = np.count_nonzero(train_mask)
+    log.info(f'{ntrain:,d}/{len(sample):,d} objects have a usable spectroscopic '
+             'redshift and will be used for training/validation.')
+
+    z_spec = np.asarray(sample['Z'], dtype=np.float64)[train_mask]
+    Xtrain = X[train_mask]
+
+    rf_kwargs = dict(n_estimators=args.n_estimators, max_depth=args.max_depth)
+
+    log.info(f'Running {args.n_folds}-fold cross-validation...')
+    z_phot_cv, diagnostics = train_and_evaluate(
+        Xtrain, z_spec, n_folds=args.n_folds, random_state=args.random_state,
+        outlier_threshold=args.outlier_threshold, **rf_kwargs)
+    log.info("NMAD = {:.5f}".format(diagnostics['nmad']))
+    log.info("Outlier fraction (|dz|/(1+z)>{}) = {:.2f}%".format(
+        args.outlier_threshold, 100 * diagnostics['outlier_frac']))
+
+    qa_plot(z_spec, z_phot_cv, diagnostics, outqa)
+
+    log.info('Fitting the final model on the full spectroscopic subsample...')
+    model = fit_final_model(Xtrain, z_spec, random_state=args.random_state, **rf_kwargs)
+
+    log.info('Predicting Z_PHOT for the full sample...')
+    z_phot, z_phot_err = predict_with_uncertainty(model, X)
+    z_phot = z_phot.astype(np.float32)
+    z_phot_err = z_phot_err.astype(np.float32)
+    z_phot[~row_mask] = np.nan
+    z_phot_err[~row_mask] = np.nan
+
+    out = Table()
+    out['SGAID'] = sample['SGAID']
+    out['Z_PHOT'] = z_phot
+    out['Z_PHOT_ERR'] = z_phot_err
+    out['Z_PHOT_TRAINSET'] = train_mask
+
+    vals, names, units = table_to_fitsio(out)
+    with fitsio.FITS(outfits, 'rw', clobber=True) as F:
+        F.write(vals, names=names, units=units, extname='PHOTOZ')
+    log.info(f'Wrote {outfits}')
+
+    joblib.dump(model, outmodel)
+    log.info(f'Wrote {outmodel}')
+
+
+if __name__ == '__main__':
+    main()

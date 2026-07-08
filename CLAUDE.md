@@ -18,12 +18,14 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `groups.py` - Galaxy group finding via spherical clustering
   - `io.py` - FITS I/O, coordinate conversions
   - `logger.py` - Unified logging (distinct from DESI loggers)
+  - `photoz.py` - Random-forest photometric-redshift estimation, trained on the spectroscopic subsample (`Z_IVAR>0`)
 - `bin/` - Active executable scripts. Key scripts:
   - `SGA2025-mpi` - MPI processing driver (coadds, ellipse, htmlplots, htmlindex)
   - `generate-sga-slurm` - Generate NERSC SLURM batch scripts for any SGA processing stage (see `etc/README.sga-slurm`)
   - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
   - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
   - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS, then merge dr11-south + dr11-north into a single deduplicated `SGA2025-{version}.fits`; derives `GALAXY` and `ALTNAMES` columns (see below)
+  - `SGA2025-photoz` - Train/cross-validate the `SGA.photoz` random-forest model and predict `Z_PHOT`/`Z_PHOT_ERR` for the full sample; writes `SGA2025-photoz-{version}.fits`/`.joblib` to `$SGA_DIR/photoz` (standalone output, not yet merged into the main catalog)
 - `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
