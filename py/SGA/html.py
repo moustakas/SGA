@@ -169,9 +169,9 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
             _rows = fullsample[_mask]
             _pidx = np.where(_rows['GROUP_PRIMARY'].astype(bool))[0] if 'GROUP_PRIMARY' in _rows.colnames else []
             _prim = _rows[_pidx[0]] if len(_pidx) else _rows[0]
-            _gname = str(_prim['GALAXY']).strip() or str(_prim['OBJNAME']).strip()
+            _gname = str(_prim['GALAXY']).strip()
             if _gname:
-                _suptitle = f'{_gname}  [SGAID {int(_prim["SGAID"])}]'
+                _suptitle = f'{_gname} [SGAID {int(_prim["SGAID"])}]'
     fig.suptitle(_suptitle)
     fig.savefig(qafile)
     plt.close()
@@ -505,9 +505,9 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             _rows = fullsample[_mask]
             _pidx = np.where(_rows['GROUP_PRIMARY'].astype(bool))[0] if 'GROUP_PRIMARY' in _rows.colnames else []
             _prim = _rows[_pidx[0]] if len(_pidx) else _rows[0]
-            _gname = str(_prim['GALAXY']).strip() or str(_prim['OBJNAME']).strip()
+            _gname = str(_prim['GALAXY']).strip()
             if _gname:
-                _suptitle = f'{_gname}  [SGAID {int(_prim["SGAID"])}]'
+                _suptitle = f'{_gname} [SGAID {int(_prim["SGAID"])}]'
     fig.suptitle(_suptitle)
     fig.savefig(qafile)
     plt.close()
@@ -672,9 +672,9 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
             if idx >= 0:
                 pub = fullsample[idx]
         if pub is not None:
-            galaxy_name = str(pub['GALAXY']).strip() or str(obj['OBJNAME']).strip()
-            title = f'SGAID {int(pub["SGAID"])}'
-            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            galaxy_name = str(pub['GALAXY']).strip()
+            #title = f'SGAID {int(pub["SGAID"])}'
+            title = f'{galaxy_name} [SGAID {int(pub["SGAID"])}]'
         else:
             #title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
             title = f"{obj['OBJNAME']} [{obj['SGAID']}]"
@@ -929,9 +929,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         sma_moment = obj['SMA_MOMENT']  # [arcsec]
         label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
         if pub is not None:
-            galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
-            title = f'SGAID {int(pub["SGAID"])}'
-            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            galaxy_name = str(pub['GALAXY']).strip()
+            title = f'{galaxy_name} [SGAID {int(pub["SGAID"])}]'
             d26 = float(pub['D26'])
             d26_ref = str(pub['D26_REF']).strip()
         else:
@@ -1236,14 +1235,13 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
         # Build figure title and geometry annotation from final catalog values when available.
         geom_str = ''
         if pub is not None:
-            galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
+            galaxy_name = str(pub['GALAXY']).strip()
             d26 = float(pub['D26'])
             d26_err = float(pub['D26_ERR'])
             d26_ref = str(pub['D26_REF']).strip()
             ba = float(pub['BA'])
             pa = float(pub['PA'])
-            title = f'SGAID {int(pub["SGAID"])}'
-            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            title = f'{galaxy_name} [SGAID {int(pub["SGAID"])}]'
             d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
             geom_str = f'$D(26)$ = {d26:.3f}±{d26_err:.3f} arcmin PA={pa:.0f}°  b/a={ba:.2f}'
         else:
@@ -2708,46 +2706,77 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     log.info("Generated: {}".format(output_file))
     return True
 
+def _init_html_worker(sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber):
+    """``multiprocessing.Pool`` initializer for
+    :func:`generate_group_html_wrapper`: stash the large, read-only
+    tables and other shared state as *worker-process* globals, once per
+    worker (via ``initargs``), instead of re-pickling them into every
+    one of the G per-group task tuples.
+
+    For a region with G groups and P worker processes, this cuts the
+    volume of data pickled/sent through the task queue from O(G) copies
+    of `sample`/`fullsample`/`fulltractor` down to O(P) -- for
+    dr11-north (G ~ 82,000 groups), `fullsample` alone pickles to ~90 MB,
+    so the old per-task embedding meant tens of terabytes of repeated
+    serialization and tens of minutes of single-threaded pickling in the
+    parent process before the first result could even come back
+    (appearing to "hang"), independent of how many workers `mp` requests.
+
+    Also pre-builds an O(1) ``GROUP_NAME`` -> row-index lookup for
+    `sample` via :func:`_build_group_index` (mirroring
+    :func:`make_html`'s ``mp == 1`` fast path), avoiding an O(N)
+    boolean-mask scan per task.
+
+    Parameters
+    ----------
+    sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber
+        Same meaning as the identically-named parameters/locals in
+        :func:`make_html`.
+
+    Returns
+    -------
+    None
+
+    """
+    global _worker_sample, _worker_sample_idx, _worker_fullsample
+    global _worker_fulltractor, _worker_htmldir, _worker_region
+    global _worker_valid_groups, _worker_clobber
+    _worker_sample = sample
+    _worker_sample_idx = _build_group_index(sample)
+    _worker_fullsample = fullsample
+    _worker_fulltractor = fulltractor
+    _worker_htmldir = htmldir
+    _worker_region = region
+    _worker_valid_groups = valid_groups
+    _worker_clobber = clobber
+
+
 def generate_group_html_wrapper(args):
-    """Unpack a single argument tuple and call :func:`generate_group_html`
-    for one group -- the top-level callable required by
-    ``multiprocessing.Pool.map`` (which cannot pickle/pass keyword
-    arguments or bound closures).
+    """Call :func:`generate_group_html` for one group, using the
+    worker-global state set up by :func:`_init_html_worker` -- the
+    top-level callable required by ``multiprocessing.Pool`` (which
+    cannot pickle/pass keyword arguments or bound closures).
 
     Parameters
     ----------
     args : :class:`tuple`
-        9-tuple ``(idx, group_name, sample, fullsample, fulltractor,
-        htmldir, region, all_groups, clobber)`` as built by
-        :func:`make_html`'s multiprocessing branch: `idx` is
-        `group_name`'s position in `all_groups` (used to look up the
-        previous/next group for HTML nav links), `sample` is the full
-        primary-galaxy table, `fullsample`/`fulltractor` are passed
-        straight through, and `htmldir`/`region`/`clobber` configure
-        the output location and overwrite behavior.
+        ``(idx, group_name)`` as built by :func:`make_html`'s
+        multiprocessing branch: `idx` is `group_name`'s position in
+        the worker-global `valid_groups` (used to look up the
+        previous/next group for HTML nav links).
 
     Returns
     -------
     Return value of :func:`generate_group_html` for this group.
 
-    Notes
-    -----
-    Selects this group's rows via ``sample[sample['GROUP_NAME'] ==
-    group_name]``, an O(N) boolean-mask scan over the *entire* sample
-    table, for every one of the ``mp`` worker calls -- unlike
-    :func:`make_html`'s ``mp == 1`` code path, which pre-builds an
-    O(1) lookup index once via :func:`_build_group_index`. For large
-    regions (dr11-south has ~150k groups) this makes the
-    multiprocessing path do O(N x G) work in total where the serial
-    path does O(N + G); it is also handed a copy of the full `sample`
-    table via the pickled `args` tuple for every one of the G calls.
-
     """
-    idx, group_name, sample, fullsample, fulltractor, htmldir, region, all_groups, clobber = args
-    group_data = sample[sample['GROUP_NAME'] == group_name]
+    idx, group_name = args
+    group_data = _worker_sample[_worker_sample_idx[str(group_name)]]
+    all_groups = _worker_valid_groups
     prev_group = all_groups[idx - 1] if idx > 0 else None
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
-    return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
+    return generate_group_html(group_data, _worker_fullsample, _worker_htmldir, _worker_region,
+                               prev_group, next_group, _worker_clobber, fulltractor=_worker_fulltractor)
 
 def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_bits):
     """Build the complete, self-contained ``index-{region}.html`` document:
@@ -3638,11 +3667,13 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
         serially using a pre-built :func:`_build_group_index` lookup
         (fast path); if greater than 1, uses
         ``multiprocessing.Pool.imap_unordered`` over
-        :func:`generate_group_html_wrapper` (see its Notes for a
-        per-call lookup-cost caveat). Either way, an INFO-level
-        "Processed N/M groups" heartbeat is logged roughly every 5% of
-        `valid_groups` (minimum every 50), since per-group skip/write
-        detail is only logged at DEBUG.
+        :func:`generate_group_html_wrapper`, with `sample`/`fullsample`/
+        `fulltractor` handed to each worker exactly once via the pool's
+        ``initializer`` (see :func:`_init_html_worker`) rather than
+        re-pickled into every one of the G per-group tasks. Either way,
+        an INFO-level "Processed N/M groups" heartbeat is logged
+        roughly every 5% of `valid_groups` (minimum every 50), since
+        per-group skip/write detail is only logged at DEBUG.
     clobber : :class:`bool`
         If True, regenerate per-group HTML pages that already exist
         (passed through to :func:`generate_group_html`).
@@ -3698,9 +3729,12 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
             if (idx + 1) % report_every == 0 or (idx + 1) == len(valid_groups):
                 log.info("Processed {}/{} groups".format(idx + 1, len(valid_groups)))
     else:
-        pool_args = [(idx, gn, sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber)
-                     for idx, gn in enumerate(valid_groups)]
-        with multiprocessing.Pool(processes=mp) as pool:
+        # Lightweight per-task tuples -- the large, read-only tables are
+        # handed to each *worker* exactly once via initargs (see
+        # _init_html_worker), not re-pickled into every one of the G tasks.
+        pool_args = [(idx, gn) for idx, gn in enumerate(valid_groups)]
+        with multiprocessing.Pool(processes=mp, initializer=_init_html_worker,
+                                 initargs=(sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber)) as pool:
             for ndone, _ in enumerate(pool.imap_unordered(generate_group_html_wrapper, pool_args), start=1):
                 if ndone % report_every == 0 or ndone == len(valid_groups):
                     log.info("Processed {}/{} groups".format(ndone, len(valid_groups)))

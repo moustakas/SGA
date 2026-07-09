@@ -192,9 +192,17 @@ Catalog versions (v0.10, v0.50, v0.60, etc.) are tracked via `SGA_version()` fun
 `GALAXY` and `ALTNAMES` are derived from NED's pipe-separated `CROSSIDS` field in
 this order (all steps applied per object):
 
-1. **HOST fix** — if `CROSSIDS[0]` contains `"HOST"` (e.g. `"SN 2003H HOST"`),
-   scan forward for the first non-HOST entry, promote it to position 0, and
-   append the original HOST name at the end (deduplicated, case-insensitive).
+1. **Bad-primary fix** (`_is_bad_primary`) — if `CROSSIDS[0]` contains `"HOST"`
+   (e.g. `"SN 2003H HOST"`) or is itself a transient/event discovery-survey
+   designation (`_TRANSIENT_NAME_RE`: `SN ####`, `AT 20##...`, `ZTF##...`,
+   `PTF`/`iPTF##...`, `ASASSN-##...`, `ATLAS##...`, `LSQ##...`, `PS##...`,
+   `Gaia##...`, `CSS J...`, `MASTER OT J...`, `SNhunt#`, `DES##...`,
+   `TCP`/`PNV J...` — these identify the event, not the host galaxy), scan
+   forward for the first entry that is neither, promote it to position 0,
+   and append the original name at the end (deduplicated, case-insensitive).
+   If no such entry exists, the transient/HOST name is kept as-is (no
+   OBJNAME fallback for this case — GALAXY is only backfilled from OBJNAME
+   when NED returned no match at all; see step 6).
 2. **Famous-name promotion** — `_find_preferred_idx` / `_PREFERRED_PREFIXES`:
    the highest-priority well-known catalog name anywhere in `CROSSIDS` is
    promoted to position 0, regardless of NED's ordering. Priority order:
@@ -208,17 +216,53 @@ this order (all steps applied per object):
    (`^[a-zA-Z0-9 +\-._:]+$`), scan ALTNAMES candidates for a clean alternative
    and promote it (original moves into ALTNAMES). Common trigger: NED names
    starting with `[`.
-5. **Prefix normalization** — uppercase known catalog-name prefixes via
-   `_normalize_galaxy_prefix` / `_PREFIX_NORM_RE` (e.g. `Mrk` → `MRK`,
-   `Arp` → `ARP`, `UGCa` → `UGCA`). Covered prefixes: 2MASX, UGCA, UGC, NGC,
-   IC, PGC, ESO, MCG, ARP, MRK, DDO, KDG, VCC, FCC, CGCG, HIPASS, SDSS, SBS,
-   KUG, UZC, MGC, HCG. `Messier` is intentionally excluded (kept mixed-case).
-6. **OBJNAME fallback** — if NED never matched, copy `OBJNAME` → `GALAXY`
-   (logged as a warning).
-7. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
+5. **Prefix normalization** (`_normalize_galaxy_prefix`) — applied to `GALAXY`
+   and every `ALTNAMES` candidate. Four independent fixes, in order:
+   - Uppercase known catalog-name prefixes via `_PREFIX_NORM_RE` (e.g. `Mrk`
+     → `MRK`, `Arp` → `ARP`, `UGCa` → `UGCA`). Covered prefixes: 2MASX, UGCA,
+     UGC, NGC, IC, PGC, ESO, MCG, ARP, MRK, DDO, KDG, KKH, WAS, VCC, FCC,
+     CGCG, HIPASS, SDSS, SBS, KUG, UZC, MGC, HCG.
+   - Insert a missing separator space via `_add_missing_prefix_space` /
+     `_MISSING_SPACE_RE`, for identifiers that arrive glued together (e.g.
+     HyperLeda's raw `OBJNAME` `PGC513380` → `PGC 513380`, or NED's
+     `SDSSJ130746.83+093729.9` → `SDSS J130746.83+093729.9`); restricted to a
+     full-string match so it never touches the unrelated `PGC1` NED catalog
+     prefix (which always already carries its own space).
+   - Replace NED's LaTeX-escaped `H{alpha}` with the NED-searchable `Halpha`
+     (e.g. `H{alpha} Dot 08` → `Halpha Dot 08`).
+   - Fix `Messier` casing via `_MESSIER_PREFIX_RE` (e.g. `MESSIER 109` →
+     `Messier 109`). Kept separate from `_PREFIX_NORM_RE` because Messier is
+     the one prefix that's mixed-case rather than all-caps, and both NED's
+     CROSSIDS and HyperLeda's OBJNAME inconsistently use all-caps `MESSIER`.
+6. **OBJNAME fallback** — if NED never matched (`GALAXY` still empty), copy
+   `_normalize_galaxy_prefix(OBJNAME)` → `GALAXY` (logged as a warning).
+7. **Case sync** (`_sync_galaxy_case`) — when `GALAXY` matches `OBJNAME`
+   case-insensitively, adopt `_normalize_galaxy_prefix(OBJNAME)` rather than
+   `OBJNAME` verbatim: HyperLeda's `OBJNAME` is often the properly-cased
+   reference (`HYDRA A` + OBJNAME `Hydra A` → `Hydra A`), but not always
+   (OBJNAME `kkh 027`/`MESSIER 083` are themselves badly cased) — routing
+   through prefix normalization lets step 5's rules win whenever they apply,
+   while still preferring OBJNAME's casing for names normalization doesn't
+   touch (Hydra, Leo). Runs twice: once here, and again after step 8, since
+   that step can promote an ALTNAMES entry whose casing differs from OBJNAME.
+8. **OBJNAME-based promotion** — if an ALTNAMES entry contains OBJNAME as a
+   case-insensitive substring (or a weaker last-token/zero-pad match; handles
+   e.g. OBJNAME `CenA-MM-Dw1` matching ALTNAMES `Centaurus A:[CSC2014]
+   MM-Dw1`), promote it to GALAXY. Two guards, both there to stop this from
+   undoing a better choice already made upstream: candidates matching
+   `_is_bad_primary` are skipped (else a transient/HOST-tagged OBJNAME, e.g.
+   `ASASSN-16pd HOST`, would match the very name step 1 just demoted and
+   promote it straight back), and the whole step is skipped when the current
+   GALAXY is already a `GALAXY_OVERRIDES` key (else a short/generic OBJNAME,
+   e.g. `Fornax`, can substring-match a demoted NED informal name still
+   sitting in ALTNAMES, e.g. `Fornax Dwarf SPHEROIDAL`, and promote it back
+   over the override-eligible entry, bypassing the override in step 9).
+9. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
    `bin/SGA2025-build-catalog`; add entries there for one-off fixes that the
-   rules above cannot handle (e.g. `'MESSIER 109': 'Messier 109'`).
-8. **Assert** — `GALAXY` is never empty after all fixes.
+   rules above cannot handle (e.g. `'AP Lib': 'ESO 514- G 001'`, promoting a
+   catalog identifier over an unrelated variable-star name NED attached to
+   the same position).
+10. **Assert** — `GALAXY` is never empty after all fixes.
 
 `ALTNAMES` (str200) = first three remaining CROSSIDS (after the promoted GALAXY is removed),
 pipe-separated, with prefix normalization and case-insensitive deduplication applied;

@@ -296,8 +296,6 @@ NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED', 'DIST_NED_DIRECT'})
 # Note: prefix-case fixes (e.g. UGCa -> UGCA) are handled by _normalize_galaxy_prefix;
 # add overrides here only for cases that regex normalization cannot cover.
 GALAXY_OVERRIDES = {
-    # Messier capitalization fix (NED uppercases the prefix)
-    'MESSIER 109': 'Messier 109',
     # Famous Local Group galaxies whose informal names are beaten by catalog prefixes
     'ESO 056- G 115':     'Large Magellanic Cloud',
     'NGC 0292':           'Small Magellanic Cloud',
@@ -311,6 +309,17 @@ GALAXY_OVERRIDES = {
     'Tucana dwarf':        'Tucana Dwarf',
     'Eridanus II dwarf':   'Eridanus II Dwarf',
     'Pegasus dwarf':       'Pegasus Dwarf Irregular',  # disambiguation from And VI
+    'PICTOR A':            'Pictor A',
+    'TEACUP':              'The Teacup',
+    'FDS18 DWARF 0019b':   'FDS18 Dwarf 0019b',
+    # Lowercase "HOST" for the two remaining transient-host orphans with no
+    # better name anywhere in CROSSIDS or OBJNAME (see _is_bad_primary).
+    'PTF11qcc HOST':       'PTF11qcc Host',
+    'PTF12cde HOST':       'PTF12cde Host',
+    # A non-galaxy name (variable star / radio source) NED attached to the
+    # galaxy's position beats its own catalog identifier; prefer the latter.
+    'AP Lib':               'ESO 514- G 001',
+    '15R 523.057546':       'AGC 336549',
     # Famous ultra-faint dwarfs (SDSS/PGC1 NED name beats the informal name)
     'SDSS J1049+5103':      'Willman 1',
     'PGC1 4713559 NED001':  'Segue 1',
@@ -320,7 +329,7 @@ GALAXY_OVERRIDES = {
     'MCG -02-53-003':       'Aquarius Dwarf',
     'ESO 594- G 004':       'Sagittarius Dwarf Irregular',
     'UGC 05364':            'Leo A',
-    'UGC 08091':            'GR 8',
+    'UGC 08091':            'GR 08',
     'ESO 245- G 007':       'Phoenix Dwarf',
     'AM 1001-270':          'Antlia Dwarf',
     'UGCA 205':             'Sextans A',
@@ -369,14 +378,73 @@ _SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:\[\]]+$')
 # Longer alternatives (e.g. UGCA) must precede shorter ones (UGC) so the
 # alternation matches the longest prefix first.
 _PREFIX_NORM_RE = re.compile(
-    r'^(2MASX|UGCA|UGC|NGC|IC|PGC|ESO|MCG|ARP|MRK|DDO|KDG|'
+    r'^(2MASX|UGCA|UGC|NGC|IC|PGC|ESO|MCG|ARP|MRK|DDO|KDG|KKH|WAS|'
     r'VCC|FCC|CGCG|HIPASS|SDSS|SBS|KUG|UZC|MGC|HCG)(?=[\s\d\-])',
     re.IGNORECASE
 )
 
+# Identifiers missing the separating space between a known catalog prefix and
+# the identifier that follows (e.g. HyperLeda's raw OBJNAME "PGC513380" or
+# NED's "SDSSJ130746.83+093729.9"). Restricted to a full-string match so it
+# never touches the unrelated "PGC1" NED catalog prefix (e.g. "PGC1 0002557
+# NED013"), which always already carries its own space and extra content.
+_MISSING_SPACE_RE = re.compile(r'^(?:(PGC)(\d+)|(SDSS)J([\d.+-]+))$', re.IGNORECASE)
+
+def _add_missing_prefix_space(name):
+    """Insert a missing separator space (e.g. 'PGC513380' -> 'PGC 513380')."""
+    m = _MISSING_SPACE_RE.match(name)
+    if not m:
+        return name
+    if m.group(1):
+        return f'{m.group(1).upper()} {m.group(2)}'
+    return f'{m.group(3).upper()} J{m.group(4)}'
+
+# Unlike the all-uppercase _PREFIX_NORM_RE prefixes, "Messier" is always kept
+# mixed-case (both NED's CROSSIDS and HyperLeda's OBJNAME inconsistently use
+# all-caps "MESSIER"), so it gets its own fixed-case substitution.
+_MESSIER_PREFIX_RE = re.compile(r'^MESSIER(?=[\s\d\-])', re.IGNORECASE)
+
 def _normalize_galaxy_prefix(name):
-    """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231')."""
+    """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231'),
+    insert a missing separator space (e.g. 'PGC513380' -> 'PGC 513380'),
+    replace NED's LaTeX-escaped 'H{alpha}' with the NED-searchable 'Halpha'
+    (e.g. 'H{alpha} Dot 08' -> 'Halpha Dot 08'), and fix 'Messier' casing
+    (e.g. 'MESSIER 109' -> 'Messier 109')."""
+    name = name.replace('H{alpha}', 'Halpha')
+    name = _MESSIER_PREFIX_RE.sub('Messier', name, count=1)
+    name = _add_missing_prefix_space(name)
     return _PREFIX_NORM_RE.sub(lambda m: m.group(0).upper(), name, count=1)
+
+# Transient/event discovery-survey designations (supernova, nova, and other
+# optical-transient names) that identify the *event*, not the host galaxy.
+# When one of these is CROSSIDS[0], it is demoted the same way an explicit
+# "... HOST" tag is: NED's crossmatch is more informative than the transient
+# name, so a genuine galaxy identifier elsewhere in CROSSIDS is preferred.
+_TRANSIENT_NAME_RE = re.compile(
+    r'^(?:'
+    r'ZTF\d{2}[a-z]+|'
+    r'i?PTF\d{2}[a-z]+|'
+    r'ASASSN-\d{2}[a-z]+|'
+    r'ATLAS\d{2}[a-z]+|'
+    r'LSQ\d{2}[a-z]+|'
+    r'PS\d{2}[a-z]+|'
+    r'Gaia\d{2}[a-z]+|'
+    r'SN ?\d{4}[A-Za-z]{0,3}|'
+    r'AT ?20\d{2}[a-z]{2,6}|'
+    r'CSS J[\d.+-]+|'
+    r'MASTER OT J[\d.+-]+|'
+    r'SNhunt\d+|'
+    r'DES\d{2}[A-Za-z]+|'
+    r'TCP J[\d.+-]+|'
+    r'PNV J[\d.+-]+'
+    r')(?: HOST)?$', re.IGNORECASE
+)
+
+def _is_bad_primary(name):
+    """True if `name` identifies a transient event or an explicit SN/nova
+    host tag rather than a galaxy -- i.e. a poor choice for GALAXY when a
+    better CROSSIDS entry is available."""
+    return 'HOST' in name.upper() or bool(_TRANSIENT_NAME_RE.match(name))
 
 # Matches leading zeros in numeric sequences not preceded by another digit,
 # e.g. "KKR 03" -> "KKR 3", "F08D1" -> "F8D1".
@@ -1824,9 +1892,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             if not parts:
                 continue
             primary = parts[0]
-            if 'HOST' in primary.upper() and len(parts) > 1:
+            if _is_bad_primary(primary) and len(parts) > 1:
                 promoted_idx = next(
-                    (j for j in range(1, len(parts)) if 'HOST' not in parts[j].upper()),
+                    (j for j in range(1, len(parts)) if not _is_bad_primary(parts[j])),
                     None
                 )
                 if promoted_idx is not None:
@@ -1865,16 +1933,54 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     empty = galaxy_arr == ''
     if np.any(empty):
         log.warning(f'  GALAXY empty for {int(np.sum(empty)):,d} objects; copying from OBJNAME')
-        galaxy_arr[empty] = objnames[empty]
+        galaxy_arr[empty] = [_normalize_galaxy_prefix(o) for o in objnames[empty]]
+
+    def _sync_galaxy_case(galaxy_arr, objnames, n):
+        """When GALAXY matches OBJNAME case-insensitively (NED's CROSSIDS entry
+        is just a differently-cased version of the same name), adopt a
+        properly-cased form -- HyperLeda's OBJNAME is often (e.g. 'HYDRA A' +
+        OBJNAME 'Hydra A' -> 'Hydra A'), but not always (e.g. OBJNAME
+        'kkh 027'/'MESSIER 083' are themselves badly cased), the properly-
+        formatted reference. Adopting _normalize_galaxy_prefix(objname) rather
+        than raw objname lets known catalog-prefix normalization (KKH, ARP,
+        Messier, ...) win over a badly-cased OBJNAME, while still preferring
+        OBJNAME's casing for names normalization doesn't touch (Hydra, Leo)."""
+        for i in range(n):
+            objname = objnames[i]
+            if not objname or not galaxy_arr[i] or galaxy_arr[i].lower() != objname.lower():
+                continue
+            target = _normalize_galaxy_prefix(objname)
+            if galaxy_arr[i] != target:
+                galaxy_arr[i] = target
+
+    # Case sync must run before the OBJNAME-based promotion loop below, which
+    # otherwise skips these as already "matching" -- and again afterward,
+    # since that loop can itself promote an ALTNAMES entry whose casing
+    # differs from OBJNAME (it matches on case-insensitive substring/token,
+    # not exact casing), re-introducing exactly the mismatch this just fixed.
+    _sync_galaxy_case(galaxy_arr, objnames, n)
 
     # OBJNAME-based promotion: after catalog-prefix promotion, if an ALTNAMES entry
     # contains OBJNAME as a case-insensitive substring, promote it to GALAXY.
     # Also checks a weaker condition: if the last whitespace-token of an ALTNAMES
     # entry (length ≥ 4) appears inside OBJNAME — this handles cases like
     # OBJNAME="CenA-MM-Dw1" matching ALTNAMES="Centaurus A:[CSC2014] MM-Dw1".
+    # Bad-primary candidates (transient names, "... HOST" tags) are skipped:
+    # otherwise, when OBJNAME itself is a transient/HOST-tagged name (e.g.
+    # HyperLeda's OBJNAME="ASASSN-16pd HOST"), this loop would match it
+    # against the very name the bad-primary fix above just demoted into
+    # ALTNAMES and promote it straight back to GALAXY.
+    # GALAXY_OVERRIDES keys are also protected from re-promotion: a hand-
+    # curated override target (e.g. famous-name-promoted "ESO 356- G 004",
+    # about to become "Fornax Dwarf Spheroidal") must survive to the
+    # overrides step below. Otherwise a short/generic OBJNAME (e.g. "Fornax")
+    # can substring-match a demoted, differently-cased NED informal name still
+    # sitting in ALTNAMES (e.g. "Fornax Dwarf SPHEROIDAL") and promote it back
+    # over the override-eligible entry, silently bypassing the override.
     for i in range(n):
         objname = objnames[i]
-        if not objname or galaxy_arr[i] == '' or galaxy_arr[i].lower() == objname.lower():
+        if (not objname or galaxy_arr[i] == '' or galaxy_arr[i].lower() == objname.lower()
+                or galaxy_arr[i] in GALAXY_OVERRIDES):
             continue
         alt_parts = [p for p in altnames_arr[i].split('|') if p]
         if not alt_parts:
@@ -1882,6 +1988,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         obj_lower = objname.lower()
         match_idx = None
         for j, alt in enumerate(alt_parts):
+            if _is_bad_primary(alt):
+                continue
             alt_lower = alt.lower()
             if obj_lower in alt_lower:
                 match_idx = j
@@ -1901,6 +2009,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 remaining = [old_gal] + remaining
             galaxy_arr[i]   = promoted
             altnames_arr[i] = '|'.join(remaining[:3])
+
+    # Re-sync casing: the promotion loop above may have just replaced GALAXY
+    # with an ALTNAMES entry whose casing differs from OBJNAME.
+    _sync_galaxy_case(galaxy_arr, objnames, n)
 
     # Apply hand-curated name corrections; keep old GALAXY in ALTNAMES so it
     # remains discoverable, and remove the new GALAXY from ALTNAMES to avoid
