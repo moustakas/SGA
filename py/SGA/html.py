@@ -3637,9 +3637,12 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
         Number of worker processes. If 1, groups are processed
         serially using a pre-built :func:`_build_group_index` lookup
         (fast path); if greater than 1, uses
-        ``multiprocessing.Pool.map`` over
+        ``multiprocessing.Pool.imap_unordered`` over
         :func:`generate_group_html_wrapper` (see its Notes for a
-        per-call lookup-cost caveat).
+        per-call lookup-cost caveat). Either way, an INFO-level
+        "Processed N/M groups" heartbeat is logged roughly every 5% of
+        `valid_groups` (minimum every 50), since per-group skip/write
+        detail is only logged at DEBUG.
     clobber : :class:`bool`
         If True, regenerate per-group HTML pages that already exist
         (passed through to :func:`generate_group_html`).
@@ -3681,6 +3684,10 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
             valid_groups.append(group_name)
     valid_groups = np.array(valid_groups)
     log.info("Generating HTML for {} groups in region {}".format(len(valid_groups), region))
+    # Periodic progress heartbeat (at INFO) in place of the per-group
+    # "Skipping (exists)" DEBUG line, which is invisible at the default
+    # log level and was being mistaken for "detection isn't working".
+    report_every = max(50, len(valid_groups) // 20) if len(valid_groups) > 0 else 1
     if mp == 1:
         _sample_idx = _build_group_index(sample)
         for idx, group_name in enumerate(valid_groups):
@@ -3688,11 +3695,15 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
             prev_group = valid_groups[idx - 1] if idx > 0 else None
             next_group = valid_groups[idx + 1] if idx < len(valid_groups) - 1 else None
             generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
+            if (idx + 1) % report_every == 0 or (idx + 1) == len(valid_groups):
+                log.info("Processed {}/{} groups".format(idx + 1, len(valid_groups)))
     else:
         pool_args = [(idx, gn, sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber)
                      for idx, gn in enumerate(valid_groups)]
         with multiprocessing.Pool(processes=mp) as pool:
-            pool.map(generate_group_html_wrapper, pool_args)
+            for ndone, _ in enumerate(pool.imap_unordered(generate_group_html_wrapper, pool_args), start=1):
+                if ndone % report_every == 0 or ndone == len(valid_groups):
+                    log.info("Processed {}/{} groups".format(ndone, len(valid_groups)))
     generate_index(htmldir, region, sample, fullsample)
     log.info("HTML generation complete!")
     return
