@@ -232,17 +232,12 @@ fitsio also supports reading a subset of columns:
    sga = Table(fitsio.read('SGA2025-dr11-south-v1.0.fits', ext='SGA2025',
                            columns=['GALAXY', 'RA', 'DEC', 'D26', 'Z']))
 
-Most analyses begin from the group primary galaxies (one per group):
+Common selections:
 
 .. code-block:: python
 
-   import numpy as np
-
-   primaries = sga[sga['GROUP_PRIMARY']]
-
-Common row selections:
-
-.. code-block:: python
+   # Primary galaxies (unique list of groups)
+   I = sga['GROUP_PRIMARY']
 
    # Diameter cuts (arcmin)
    I = (sga['D26'] > 1.) & (sga['D26'] < 10.)
@@ -1066,7 +1061,7 @@ Bitmasks
 ~~~~~~~~~~
 
 We set ``SAMPLE`` in the parent catalog and propagate it to the merged
-catalogs. We may set multiple bits on a source simultaneously.
+catalogs. Multiple bits may be set on the same object simultaneously.
 
 .. list-table::
    :header-rows: 1
@@ -1324,7 +1319,7 @@ internal resolution.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We store per-band imaging mask bits in the per-group ``-maskbits.fits[.fz]``
-files and the per-galaxy ``-ellipse-{dataset}.fits`` files. All three share
+files and the per-galaxy ``-ellipse-{griz,galex,unwise}.fits`` files. All three share
 the same low-order bits:
 
 .. list-table::
