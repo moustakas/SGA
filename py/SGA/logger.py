@@ -220,26 +220,33 @@ def getSgaLogger():
 
     Notes
     -----
-    Despite this docstring's earlier claim of "default level INFO",
-    the logger itself is actually set to DEBUG (``log.setLevel(logging.DEBUG)``,
+    The logger itself is set to DEBUG (``log.setLevel(logging.DEBUG)``,
     "allow everything; handlers decide what to write") -- the effective
-    filtering happens at the handler level (e.g. via
-    :func:`setup_logging`'s file handler, set to INFO), not on the
-    logger itself.
+    filtering happens at the handler level, consistent with every other
+    console handler created elsewhere in the codebase (:func:`setup_logging`'s
+    debug branch, :func:`restore_logger`/:func:`unhook_legacypipe_and_root`
+    in ``bin/SGA2025-mpi``): INFO by default, only bumped to DEBUG when a
+    caller explicitly asks for ``--debug``. This matters for code paths
+    that use :data:`log` straight from import without ever calling
+    :func:`setup_logging` (e.g. ``bin/SGA2025-mpi``'s ``--htmlindex``
+    stage, which runs entirely on rank 0 before any per-galaxy logging
+    setup) -- without an explicit level here, the console handler would
+    default to ``NOTSET`` and pass every ``log.debug(...)`` call through.
 
     Returns
     -------
     :class:`logging.Logger`
         The ``'SGA'`` logger, with a stdout ``StreamHandler`` attached
-        (only added the first time, if none exists yet), level DEBUG,
-        and ``propagate=False`` (to avoid duplicate messages via the
-        root logger).
+        (only added the first time, if none exists yet) at level INFO,
+        the logger itself at level DEBUG, and ``propagate=False`` (to
+        avoid duplicate messages via the root logger).
 
     """
     log = logging.getLogger('SGA')
     if not log.handlers:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(LOGFMT)
+        ch.setLevel(logging.INFO)
         log.addHandler(ch)
     log.setLevel(logging.DEBUG) # allow everything; handlers decide what to write
     log.propagate = False  # don’t duplicate to root
