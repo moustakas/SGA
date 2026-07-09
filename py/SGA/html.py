@@ -35,9 +35,12 @@ LEGACYPIPE_BITMASKS_URL = "https://www.legacysurvey.org/dr11/bitmasks/"
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                       barlabel=None, clobber=False, fullsample=None):
-    """Build a 3x3 grid QA montage (data/model/residual rows x
-    optical/unWISE/GALEX columns) for one galaxy or group, plus a
-    standalone optical thumbnail JPEG.
+    """Build a QA montage (data/model/residual rows x optical/unWISE/GALEX
+    columns) for one galaxy or group, plus a standalone optical thumbnail
+    JPEG. Coadds-only mosaics (no Tractor fitting; see the
+    "file-inventory" section of ``doc/sga2025.rst``) get a 1x3 grid
+    (data row only) instead of the usual 3x3, since no model/residual
+    imagery exists for them.
 
     Parameters
     ----------
@@ -48,8 +51,8 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         ``opt_jpg_image``, ``{opt,unwise,galex}_jpg_{image,model,resid}``,
         ``{opt,unwise,galex}_pixscale``, and ``{opt,unwise,galex}_refband``.
     sample : :class:`astropy.table.Table`
-        Per-object sample table for this galaxy/group (currently
-        unused in the function body; see Notes).
+        Per-object sample table for this galaxy/group; consulted for
+        ``ELLIPSEBIT`` to detect coadds-only mosaics (see above).
     htmlgalaxydir : :class:`str`
         Output directory for the montage PNG and thumbnail JPEG
         (created if it does not exist).
@@ -74,13 +77,11 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
 
     Notes
     -----
-    `sample` is accepted but never referenced in the function body --
-    a dead parameter. If `barlen` is left as ``None`` (its default),
-    the scale-bar block (``dx = barlen / wimg.shape[0]``) raises
-    ``TypeError``, since it always executes for the first (data,
-    optical) panel; in practice the sole caller
-    (:func:`make_plots`, itself called from ``bin/SGA2025-mpi``)
-    always supplies a real `barlen` via
+    If `barlen` is left as ``None`` (its default), the scale-bar block
+    (``dx = barlen / wimg.shape[0]``) raises ``TypeError``, since it
+    always executes for the first (data, optical) panel; in practice
+    the sole caller (:func:`make_plots`, itself called from
+    ``bin/SGA2025-mpi``) always supplies a real `barlen` via
     :func:`SGA.SGA.get_radius_mosaic`.
 
     """
@@ -104,20 +105,28 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         return
 
 
+    # Coadds-only mosaics (no Tractor fitting; see the "file-inventory"
+    # section of doc/sga2025.rst) carry ELLIPSEBIT['SKIPTRACTOR'] on every
+    # row of `sample` -- show just the data row (no model/residuals).
+    is_coadds_only = ('ELLIPSEBIT' in sample.colnames and
+                      np.any(sample['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']))
+    imtypes = ['image'] if is_coadds_only else ['image', 'model', 'resid']
+
     ncol = 3
-    nrow = 3 # data, model, residuals
+    nrow = len(imtypes)
     inches_per_panel = 3.
     fig, ax = plt.subplots(nrow, ncol,
                            figsize=(inches_per_panel*ncol,
                                     inches_per_panel*nrow),
                            gridspec_kw={'wspace': 0.0, 'hspace': 0.0},
                            constrained_layout=True)
+    ax = np.atleast_2d(ax)
 
     opt_bands = data['opt_bands']
     labels = [''.join(opt_bands), 'unWISE', 'GALEX']
     imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
 
-    for ii, imtype in enumerate(['image', 'model', 'resid']):
+    for ii, imtype in enumerate(imtypes):
         for iax, (xx, bands, label, wimg, pixscale, refband) in enumerate(zip(
                 ax[ii, :], imgbands, labels,
                 [data[f'opt_jpg_{imtype}'], data[f'unwise_jpg_{imtype}'], data[f'galex_jpg_{imtype}']],
@@ -2231,6 +2240,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='#sec-group'>Group Properties</a>",
         "        <a href='#sec-identifiers'>Identifiers</a>",
         "        <a href='#sec-redshift'>Redshift &amp; Distance</a>",
+        "        <a href='#sec-redshift-extra'>Additional Redshifts &amp; Distances</a>",
         "        <a href='#sec-montage'>Multiwavelength Montage</a>",
         "        <a href='#sec-ellipse'>Ellipse Masking</a>",
     ]
@@ -2316,37 +2326,19 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             has_sdss  = _has('Z_SDSS')
             has_ned   = _has('Z_NED')
             has_lvd   = _has('Z_LVD')
+
+            # --- Table 1: Adopted redshift/distance + photo-z -----------------
             html_lines.append("    <h2 id='sec-redshift'>Redshift &amp; Distance</h2>")
             html_lines.append("    <table>")
             hdr1 = [('Galaxy', 1, 3), ('Adopted', 5)]
             if has_photz:
                 hdr1.append(('Photo-z', 1))
-            if has_desi:
-                hdr1.append(('DESI', 4))
-            if has_sdss:
-                hdr1.append(('SDSS', 2))
-            if has_ned:
-                hdr1.append(('NED', 4))
-            if has_lvd:
-                hdr1.append(('LVD', 2))
             html_lines.append(_th(*hdr1))
             hdr2 = ['', '', 'Distance', '', '']
             hdr3 = ['Redshift', 'Ref', '(Mpc)', 'Ref', 'Method']
             if has_photz:
                 hdr2 += ['']
                 hdr3 += ['Redshift']
-            if has_desi:
-                hdr2 += ['', '', '', '']
-                hdr3 += ['Redshift', 'ZWARN', 'SPECTYPE', 'N Spectra']
-            if has_sdss:
-                hdr2 += ['', '']
-                hdr3 += ['Redshift', 'CLASS']
-            if has_ned:
-                hdr2 += ['', 'Mean Dist.', 'Direct Dist.', '']
-                hdr3 += ['Redshift', '(Mpc)', '(Mpc)', 'Method']
-            if has_lvd:
-                hdr2 += ['', 'Distance']
-                hdr3 += ['Redshift', '(Mpc)']
             html_lines.append(_th(*hdr2))
             html_lines.append(_th(*hdr3))
             for row in fullgroup_data:
@@ -2373,36 +2365,73 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 ]
                 if has_photz:
                     cells += [_fmt_z(row, 'Z_PHOT', 'Z_PHOT_IVAR')]
-                if has_desi:
-                    z_desi_s = _fmt_z(row, 'Z_DESI', 'Z_IVAR_DESI')
-                    zwarn_raw = _get(row, 'ZWARN_DESI')
-                    zwarn    = int(zwarn_raw) if zwarn_raw is not None else -1
-                    spectype = str(_get(row, 'SPECTYPE_DESI', '') or '').strip()
-                    nspec    = int(_get(row, 'NSPEC_DESI', 0) or 0)
-                    if zwarn < 0:
-                        zwarn_s = ''
-                    elif zwarn == 0:
-                        zwarn_s = str(zwarn)
-                    else:
-                        zwarn_s = f"<span class='warn'>{zwarn}</span>"
-                    cells += [z_desi_s, zwarn_s, spectype, nspec if nspec else '']
-                if has_sdss:
-                    class_sdss = str(_get(row, 'CLASS_SDSS', '') or '').strip()
-                    cells += [_fmt_z(row, 'Z_SDSS', 'Z_IVAR_SDSS'), class_sdss]
-                if has_ned:
-                    cells += [
-                        _fmt_z(row, 'Z_NED', 'Z_IVAR_NED'),
-                        _fmt_dist(row, 'DIST_NED', 'DIST_IVAR_NED'),
-                        _fmt_dist(row, 'DIST_NED_DIRECT', 'DIST_IVAR_NED_DIRECT'),
-                        str(_get(row, 'DIST_NED_DIRECT_METHOD', '') or '').strip(),
-                    ]
-                if has_lvd:
-                    cells += [
-                        _fmt_z(row, 'Z_LVD', 'Z_IVAR_LVD'),
-                        _fmt_dist(row, 'DIST_LVD', 'DIST_IVAR_LVD'),
-                    ]
                 html_lines.append(_td(*cells))
             html_lines.append("    </table>")
+
+            # --- Table 2: cross-match sources (DESI/SDSS/NED/LVD) --------------
+            if has_desi or has_sdss or has_ned or has_lvd:
+                html_lines.append("    <h2 id='sec-redshift-extra'>Additional Redshifts &amp; Distances</h2>")
+                html_lines.append("    <table>")
+                hdr1b = [('Galaxy', 1, 3)]
+                if has_desi:
+                    hdr1b.append(('DESI', 4))
+                if has_sdss:
+                    hdr1b.append(('SDSS', 2))
+                if has_ned:
+                    hdr1b.append(('NED', 4))
+                if has_lvd:
+                    hdr1b.append(('LVD', 2))
+                html_lines.append(_th(*hdr1b))
+                hdr2b, hdr3b = [], []
+                if has_desi:
+                    hdr2b += ['', '', '', '']
+                    hdr3b += ['Redshift', 'ZWARN', 'SPECTYPE', 'N Spectra']
+                if has_sdss:
+                    hdr2b += ['', '']
+                    hdr3b += ['Redshift', 'CLASS']
+                if has_ned:
+                    hdr2b += ['', 'Mean Dist.', 'Direct Dist.', '']
+                    hdr3b += ['Redshift', '(Mpc)', '(Mpc)', 'Method']
+                if has_lvd:
+                    hdr2b += ['', 'Distance']
+                    hdr3b += ['Redshift', '(Mpc)']
+                html_lines.append(_th(*hdr2b))
+                html_lines.append(_th(*hdr3b))
+                for row in fullgroup_data:
+                    _gname_z = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+                    _sgaid_z = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
+                    cells = [_ned_link(_gname_z) + _sgaid_z]
+                    if has_desi:
+                        z_desi_s = _fmt_z(row, 'Z_DESI', 'Z_IVAR_DESI')
+                        zwarn_raw = _get(row, 'ZWARN_DESI')
+                        zwarn    = int(zwarn_raw) if zwarn_raw is not None else -1
+                        spectype = str(_get(row, 'SPECTYPE_DESI', '') or '').strip()
+                        nspec    = int(_get(row, 'NSPEC_DESI', 0) or 0)
+                        if zwarn < 0:
+                            zwarn_s = ''
+                        elif zwarn == 0:
+                            zwarn_s = str(zwarn)
+                        else:
+                            zwarn_s = f"<span class='warn'>{zwarn}</span>"
+                        cells += [z_desi_s, zwarn_s, spectype, nspec if nspec else '']
+                    if has_sdss:
+                        class_sdss = str(_get(row, 'CLASS_SDSS', '') or '').strip()
+                        cells += [_fmt_z(row, 'Z_SDSS', 'Z_IVAR_SDSS'), class_sdss]
+                    if has_ned:
+                        cells += [
+                            _fmt_z(row, 'Z_NED', 'Z_IVAR_NED'),
+                            _fmt_dist(row, 'DIST_NED', 'DIST_IVAR_NED'),
+                            _fmt_dist(row, 'DIST_NED_DIRECT', 'DIST_IVAR_NED_DIRECT'),
+                            str(_get(row, 'DIST_NED_DIRECT_METHOD', '') or '').strip(),
+                        ]
+                    if has_lvd:
+                        cells += [
+                            _fmt_z(row, 'Z_LVD', 'Z_IVAR_LVD'),
+                            _fmt_dist(row, 'DIST_LVD', 'DIST_IVAR_LVD'),
+                        ]
+                    html_lines.append(_td(*cells))
+                html_lines.append("    </table>")
+
             html_lines.append(
                 "    <p class='muted'>Reference abbreviations (<code>Z_REF</code>/<code>DIST_REF</code>/"
                 "<code>DIST_METHOD</code>) and the redshift-quality flag (hover the ⚠/ⓘ icon) are defined in the "
@@ -2547,25 +2576,38 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         for row, tr in zip(fullgroup_data, tractor_group):
             _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
             _sgaid_s = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
-            ra_s    = f"{float(tr['RA']):.6f}"   if 'RA'      in _tcols else ''
-            dec_s   = f"{float(tr['DEC']):.6f}"  if 'DEC'     in _tcols else ''
-            typ     = str(tr['TYPE']).strip()     if 'TYPE'    in _tcols else ''
-            if 'SERSIC' in _tcols:
-                _sv = float(tr['SERSIC'])
-                sersic = f'{_sv:.2f}' if _sv > 0 else ''
+            # NOTRACTOR (per-object) and SKIPTRACTOR (coadds-only group)
+            # both mean this row's Tractor entry is a mock/zero-filled
+            # placeholder (see SGA._create_mock_tractor_sga/io.empty_tractor)
+            # -- RA/Dec/Type/Sersic/r50/mags are fill values, not measurements.
+            _no_tractor = bool(int(_get(row, 'ELLIPSEBIT', 0) or 0) &
+                               (ELLIPSEBIT['NOTRACTOR'] | ELLIPSEBIT['SKIPTRACTOR']))
+            if _no_tractor:
+                ra_s = dec_s = sersic = shape_r = ''
+                typ = "<span class='muted'>No Tractor source</span>"
+                mb_s = fb_s = ''
+                mag_g = mag_r = mag_z = ''
             else:
-                sersic = ''
-            shape_r = f"{float(tr['SHAPE_R']):.3f}" if 'SHAPE_R' in _tcols else ''
-            mb_s = (_decode_bits(tr['MASKBITS'], LP_MASKBITS)
-                    if 'MASKBITS' in _tcols else '')
-            fb_s = (_decode_bits(tr['FITBITS'],  LP_FITBITS)
-                    if 'FITBITS'  in _tcols else '')
+                ra_s    = f"{float(tr['RA']):.6f}"   if 'RA'      in _tcols else ''
+                dec_s   = f"{float(tr['DEC']):.6f}"  if 'DEC'     in _tcols else ''
+                typ     = str(tr['TYPE']).strip()     if 'TYPE'    in _tcols else ''
+                if 'SERSIC' in _tcols:
+                    _sv = float(tr['SERSIC'])
+                    sersic = f'{_sv:.2f}' if _sv > 0 else ''
+                else:
+                    sersic = ''
+                shape_r = f"{float(tr['SHAPE_R']):.3f}" if 'SHAPE_R' in _tcols else ''
+                mb_s = (_decode_bits(tr['MASKBITS'], LP_MASKBITS)
+                        if 'MASKBITS' in _tcols else '')
+                fb_s = (_decode_bits(tr['FITBITS'],  LP_FITBITS)
+                        if 'FITBITS'  in _tcols else '')
+                mag_g = _fmt_tractor_mag(tr, 'G')
+                mag_r = _fmt_tractor_mag(tr, 'R')
+                mag_z = _fmt_tractor_mag(tr, 'Z')
             html_lines.append(_td(
                 _ned_link(_gname) + _sgaid_s,
                 ra_s, dec_s, typ, sersic, shape_r,
-                _fmt_tractor_mag(tr, 'G'),
-                _fmt_tractor_mag(tr, 'R'),
-                _fmt_tractor_mag(tr, 'Z'),
+                mag_g, mag_r, mag_z,
                 mb_s, fb_s,
             ))
         html_lines.append("    </table>")
@@ -2616,12 +2658,18 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
 
     jname_to_galaxy = {}
     jname_to_sgaid = {}
+    jname_to_resolved = {}
     if len(fullgroup_data) > 0 and 'SGANAME' in fullgroup_data.colnames:
         for row in fullgroup_data:
             jname = str(row['SGANAME']).strip().replace('SGA2025 ', '')
             jname_to_galaxy[jname] = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
             if _has('SGAID'):
                 jname_to_sgaid[jname] = int(row['SGAID'])
+            # RESOLVED galaxies (LMC, SMC, M33, etc.) never get ellipse-fit
+            # QA figures -- make_plots skips them entirely (skip_ellipse) --
+            # so a missing PNG here is expected, not a processing failure.
+            jname_to_resolved[jname] = bool(int(_get(row, 'ELLIPSEMODE', 0) or 0) &
+                                            ELLIPSEMODE['RESOLVED'])
     html_lines.extend([
         "",
         "    <div class='section'>",
@@ -2634,6 +2682,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         display_name = jname_to_galaxy.get(galaxy_name, galaxy_name)
         _sgaid_h = jname_to_sgaid.get(galaxy_name)
         _sgaid_suffix = f'  (SGAID {_sgaid_h})' if _sgaid_h else ''
+        _is_resolved = jname_to_resolved.get(galaxy_name, False)
         sec_id = "id='sec-figures' " if igal == 0 else ''
         html_lines.append(f"        <h2 {sec_id}style='margin-bottom: 4px;'>{display_name}{_sgaid_suffix}</h2>")
         html_lines.append("        <div class='galaxy-row'>")
@@ -2642,6 +2691,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             filepath = group_dir / filename
             if filepath.exists():
                 html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(filename, filename, filename))
+            elif _is_resolved:
+                html_lines.append("            <div style='border:1px solid #ddd; color:#888; font-size:12px; padding:10px; text-align:center; flex:0 0 32%;'>Not Measured</div>")
             else:
                 log.warning("Missing QA file: {}".format(filepath))
                 html_lines.append("            <div style='border:1px solid #ddd; color:#888; font-size:12px; padding:10px; text-align:center; flex:0 0 32%;'>Missing:<br>{}</div>".format(filename))
