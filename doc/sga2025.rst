@@ -93,45 +93,36 @@ Galaxy Names: ``GALAXY`` and ``ALTNAMES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``GALAXY`` (str35) is the primary human-readable name assigned to each
-source. ``ALTNAMES`` (str200) holds up to three additional names,
-pipe-separated. We derive both from NED's pipe-separated ``CROSSIDS``
-cross-identification list through the following steps, applied in order:
+source; ``ALTNAMES`` (str200) holds up to three additional,
+pipe-separated cross-identifications. Both are derived from NED's
+cross-identification list for each object, guided by a few principles
+rather than a fixed procedure:
 
-1. **HOST fix** — If the NED-primary name contains ``HOST`` (e.g.
-   ``SN 2003H HOST``), we promote the first non-HOST entry in ``CROSSIDS``
-   to position 0 and append the original HOST name at the end
-   (deduplicated case-insensitively).
+- **Prefer well-known, NED-searchable catalog names.** Where an object
+  has multiple valid identifiers, we favor "famous" designations --
+  Messier, NGC, IC, UGC, ESO, and similar well-established catalogs --
+  over obscure or machine-generated identifiers, and we favor a galaxy's
+  informal name (e.g. "Large Magellanic Cloud", "Fornax Dwarf
+  Spheroidal") when one exists and is unambiguous.
 
-2. **Famous-name promotion** — We promote the highest-priority well-known
-   catalog name anywhere in ``CROSSIDS`` to ``GALAXY``, regardless of
-   NED's own ordering. Priority order (highest first): Messier, NGC,
-   IC, UGCA/UGC, ESO, ESO-LV, MCG, ARP, MRK, DDO, KDG, VCC, CGCG, PGC,
-   PGC1, AGC, FCC, HCG, HIPASS. Names absent from this list (2MASX,
-   SDSS, WISE, ICRF, etc.) remain as ``GALAXY`` only when no
-   higher-priority name is available.
+- **Prefer names that actually identify the galaxy.** NED sometimes
+  attaches a supernova, nova, or other transient's discovery name (e.g.
+  ``ASASSN-16pd``, ``SN 2008C HOST``) to a host galaxy's cross-match
+  list; we treat these as poor primary names and prefer an actual galaxy
+  identifier when one is available.
 
-3. **Special-character fix** — If the promoted ``GALAXY`` name contains
-   characters outside the safe set (letters, digits, space, ``+``, ``-``,
-   ``.``, ``_``, ``:``) — a common pattern for NED names beginning with
-   ``[`` — we promote the first ``ALTNAMES`` candidate that passes the
-   safe-character test to ``GALAXY`` instead and move the original name
-   into ``ALTNAMES``.
+- **Normalize formatting for consistency.** Catalog-name prefixes are
+  cased consistently (e.g. ``MRK``, ``ARP``, ``PGC``) and separator
+  spacing is corrected where a name arrived without it (e.g. HyperLeda's
+  raw ``PGC513380`` becomes ``PGC 513380``).
 
-4. **Prefix normalization** — We fully uppercase known catalog-name
-   prefixes (e.g. ``Mrk`` → ``MRK``, ``Arp`` → ``ARP``, ``UGCa`` →
-   ``UGCA``). We intentionally leave ``Messier`` in mixed case.
+- **Fall back gracefully.** If NED returned no cross-match at all, we
+  adopt the parent catalog's own object name. A small, hand-curated list
+  of overrides covers well-known objects -- mostly Local Group dwarf
+  galaxies -- whose best name can't be derived automatically.
 
-5. **OBJNAME fallback** — If NED returned no match for the object, we set
-   ``GALAXY`` to ``OBJNAME`` from the parent catalog.
-
-6. **Hand-curated overrides** — We apply a small dictionary of one-off
-   corrections (e.g. ``MESSIER 109`` → ``Messier 109``) after all rules
-   above.
-
-We build ``ALTNAMES`` from the remaining ``CROSSIDS`` entries (after
-removing the promoted ``GALAXY`` name and dropping case-insensitive
-duplicates), applying prefix normalization; the field is blank when no
-alternatives remain.
+``ALTNAMES`` collects the remaining cross-identifications after
+``GALAXY`` is chosen, deduplicated and prefix-normalized in the same way.
 
 .. _imaging-regions:
 
