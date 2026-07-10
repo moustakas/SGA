@@ -578,7 +578,7 @@ COL_ORDER = [
     # --- SDSS DR17 spectroscopy ---
     'SPECOBJID_SDSS', 'Z_SDSS', 'Z_IVAR_SDSS', 'CLASS_SDSS',
     # --- NED redshift and distance ---
-    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
+    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED', 'DIST_NED_MEAN_METHOD',
     'DIST_NED_DIRECT', 'DIST_IVAR_NED_DIRECT', 'DIST_NED_DIRECT_METHOD',
     'NED_FLAG', 'NED_Z_FLAG',
     # --- LVD redshifts and distances ---
@@ -723,6 +723,7 @@ NED_CARRY = [
     ('NED_Z_REF',         'Z_REF_NED',      None),
     ('NED_DIST',          'DIST_NED',       u.Mpc),
     # DIST_IVAR_NED inserted after DIST_NED in assembly (computed from NED_DIST_UNC)
+    ('NED_DIST_MEAN_METHOD',   'DIST_NED_MEAN_METHOD',   None),
     ('NED_DIST_DIRECT',        'DIST_NED_DIRECT',        u.Mpc),
     # DIST_IVAR_NED_DIRECT inserted after DIST_NED_DIRECT (from NED_DIST_DIRECT_UNC)
     ('NED_DIST_DIRECT_METHOD', 'DIST_NED_DIRECT_METHOD', None),
@@ -773,10 +774,11 @@ ADOPTED_COLS = [
 # Adopted distance columns. Priority: gold-tier NED_DIRECT > LVD > NED
 # (blended mean) > ZCOSMO (Hubble-flow from Z_COSMO, via SGA.cosmo). DIST_REF is
 # the coarse 4-way source tag; DIST_METHOD is the specific technique (gold
-# method name / LVD's own distance_measurement_method / 'NED_MEAN' /
-# 'HUBBLE_FLOW'), uppercased for consistent presentation across tiers.
-# DIST_NED_DIRECT/DIST_IVAR_NED_DIRECT are assembled separately, alongside
-# the rest of NED_CARRY (see the "NED columns" assembly block) -- not here.
+# method name / LVD's own distance_measurement_method / DIST_NED_MEAN_METHOD
+# when unambiguous, else the generic 'NED_MEAN' / 'HUBBLE_FLOW'), uppercased
+# for consistent presentation across tiers. DIST_NED_DIRECT/DIST_IVAR_NED_DIRECT
+# and DIST_NED_MEAN_METHOD are assembled separately, alongside the rest of
+# NED_CARRY (see the "NED columns" assembly block) -- not here.
 DIST_COLS = [
     ('DIST',                 np.float32, u.Mpc),
     ('DIST_IVAR',            np.float32, u.Mpc**-2),
@@ -1634,6 +1636,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         method_ned_direct    = ned_arrs['DIST_NED_DIRECT_METHOD'][i]
         dist_ned      = ned_arrs['DIST_NED'][i]
         dist_ivar_ned = ned_arrs['DIST_IVAR_NED'][i]
+        method_ned_mean = ned_arrs['DIST_NED_MEAN_METHOD'][i]
         dist_lvd      = dist_arrs['DIST_LVD'][i]
         dist_ivar_lvd = dist_arrs['DIST_IVAR_LVD'][i]
         if dist_ned_direct > 0.:
@@ -1650,7 +1653,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             dist_arrs['DIST'][i]        = dist_ned
             dist_arrs['DIST_IVAR'][i]   = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]    = 'NED'
-            dist_arrs['DIST_METHOD'][i] = 'NED_MEAN'
+            dist_arrs['DIST_METHOD'][i] = method_ned_mean if method_ned_mean else 'NED_MEAN'
 
     # --- Consensus override: DESI outlier vs. an agreeing SDSS/NED pair ----
     n_consensus = 0

@@ -177,6 +177,30 @@ The override attempt is skipped gracefully when --distances-glob has no
 file for a region (existing NED_DIST/NED_DIST_UNC columns are unaffected
 either way).
 
+Mean-distance method provenance (resolve_distance_mean_method)
+----------------------------------------------------------------
+NED's blended NED_DIST "mean" has no provenance even when the full
+DistancesOfObject list backing it turns out to be a single technique
+repeated across one or more references (e.g. SGAID 4701505 / ARK 590: NED_DIST
+= 96.1 Mpc, and the only row in the distances list is a single FP measurement
+at 96.1 Mpc -- the "mean" of one number is that number). Cross-checking the
+full sample showed this holds for ~93% of objects that fall back to the NED
+mean tier (DIST_REF='NED' in SGA2025-build-catalog): the mean is trivially a
+single method's data, just not labeled as such. resolve_distance_mean_method
+returns that method name (uppercased, DIST_METHOD_RENAME applied first --
+currently only 'BL Lac Luminosity' -> 'BL Lac', to fit the DIST_METHOD U16
+output column) when every row in the SGAID's distance list shares one
+NED_DIST_METHOD, written to a new NED_DIST_MEAN_METHOD column; blank when 2+
+distinct methods are present (a genuine blend, where 'NED_MEAN' remains the
+honest tag). Unlike resolve_distance_gold, this is not restricted to
+DIST_GOLD_METHODS -- it describes whatever the (typically non-gold, since a
+gold-tier method would already be picked up by NED_DIST_DIRECT) measurement
+list actually contains. This step only populates the new column; it does not
+change NED_DIST/NED_DIST_UNC. SGA2025-build-catalog uses it to set
+DIST_METHOD (not DIST_REF, which stays 'NED') when NED_DIST_DIRECT/LVD are
+both unavailable, falling back to the generic 'NED_MEAN' tag only when
+NED_DIST_MEAN_METHOD is blank.
+
 Outputs (written to --outdir)
 ------------------------------
   ned-merged-dr11-south.fits
@@ -226,6 +250,12 @@ DIST_GOLD_METHODS = ['Cepheids', 'TRGB', 'PNLF', 'SBF', 'SNIa',
 MIN_CONFIDENT_REFS = 3
 DIST_CLUSTER_TOL   = 0.15
 
+# Method-name shortenings applied before uppercasing, to fit the DIST_METHOD
+# U16 output column (see resolve_distance_mean_method).
+DIST_METHOD_RENAME = {
+    'BL Lac Luminosity': 'BL Lac',
+}
+
 # ---------------------------------------------------------------------------
 # Column type classification
 # ---------------------------------------------------------------------------
@@ -264,6 +294,7 @@ OUT_COLS = (
     + OVERVIEW_FIELDS
     + ['NED_Z_ORIG', 'NED_Z_NCAND', 'NED_Z_NALT', 'NED_Z_TECHNIQUE', 'NED_Z_QUALITY']
     + ['NED_DIST_DIRECT', 'NED_DIST_DIRECT_UNC', 'NED_DIST_DIRECT_METHOD', 'NED_DIST_DIRECT_REF']
+    + ['NED_DIST_MEAN_METHOD']
 )
 
 
@@ -568,6 +599,24 @@ def resolve_distance_gold(measurements):
     return candidate
 
 
+def resolve_distance_mean_method(measurements):
+    """Return the single NED_DIST_METHOD name (uppercased, DIST_METHOD_RENAME
+    applied first) if every row in `measurements` shares one method -- the
+    case where NED's blended "mean" distance is trivially just that one
+    method's data -- else ''.
+
+    Unlike resolve_distance_gold, this is not restricted to
+    DIST_GOLD_METHODS: it describes the full measurement list as-is (in
+    practice usually non-gold, since a gold-tier method would already be
+    picked up by NED_DIST_DIRECT).
+    """
+    methods = {m['method'] for m in measurements if m['method']}
+    if len(methods) != 1:
+        return ''
+    method = next(iter(methods))
+    return DIST_METHOD_RENAME.get(method, method).upper()
+
+
 # ---------------------------------------------------------------------------
 # Per-region merge
 # ---------------------------------------------------------------------------
@@ -811,6 +860,12 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob, distances_glob,
             cols['NED_DIST_DIRECT_METHOD'].append(str(gold['method']))
             cols['NED_DIST_DIRECT_REF'].append(str(gold['reference']))
 
+        # Mean-distance method provenance, if unambiguous -- see
+        # "Mean-distance method provenance" docstring section. Does not
+        # affect NED_DIST/NED_DIST_UNC.
+        cols['NED_DIST_MEAN_METHOD'].append(
+            resolve_distance_mean_method(distance_alts.get(sid, [])))
+
     if missing_redshift_sgaids:
         log.warning(
             f'{region}: {len(missing_redshift_sgaids):,d} objects have a NED match '
@@ -891,6 +946,9 @@ def merge_region(region, outdir, sep_threshold, redshifts_glob, distances_glob,
     n_dist_direct = int(np.sum(np.asarray(t['NED_DIST_DIRECT_METHOD']) != ''))
     print(f'  NED_DIST_DIRECT (gold-tier) available : {n_dist_direct:>8,d}  '
           f'({pct(n_dist_direct):5.1f}%)')
+    n_dist_mean_method = int(np.sum(np.asarray(t['NED_DIST_MEAN_METHOD']) != ''))
+    print(f'  NED_DIST_MEAN_METHOD (unambiguous)    : {n_dist_mean_method:>8,d}  '
+          f'({pct(n_dist_mean_method):5.1f}%)')
     print()
     print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
     print(f'  Missing from bypos  CSV : {n_no_bypos:>8,d}')
