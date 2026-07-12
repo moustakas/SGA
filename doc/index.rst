@@ -41,7 +41,7 @@ Instrument (DESI) <https://desi.lbl.gov>`_.
 
       Web gallery: https://sga.legacysurvey.org
 
-      Released January 2021.
+      Released January 2021
 
 ----
 

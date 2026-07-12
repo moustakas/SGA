@@ -3431,7 +3431,7 @@ def _build_group_index(tbl):
     return {k: np.array(v, dtype=int) for k, v in raw.items()}
 
 
-def generate_index(htmldir, region, sample, fullsample=None):
+def generate_index(htmldir, region, sample, fullsample=None, valid_groups=None, mp=1):
     """Generate the JS-driven gallery index for one region: write
     ``groups-{region}.json`` (one record per group, primary-galaxy
     properties plus OR-combined bitmasks across all group members)
@@ -3460,6 +3460,19 @@ def generate_index(htmldir, region, sample, fullsample=None):
         JSON payload default to 0 for every group, and ``SAMPLE``
         falls back to OR-reducing across `sample` alone (or to 0 if
         `sample` also lacks a ``SAMPLE`` column).
+    valid_groups : :class:`numpy.ndarray`, optional
+        Group names already confirmed (by the caller) to have an
+        existing HTML output directory -- typically ``make_html``'s
+        own ``valid_groups``, computed via the same
+        :func:`find_group_directory` check this function would
+        otherwise repeat from scratch. When given, skips the redundant
+        per-group existence re-check entirely (directories are
+        resolved by path arithmetic instead). When omitted, falls back
+        to ``np.unique(sample['GROUP_NAME'])`` filtered through
+        :func:`find_group_directory`, as before.
+    mp : :class:`int`
+        Used only to size the I/O-prefetch thread pool (see Notes);
+        unrelated to any CPU-bound parallelism.
 
     Returns
     -------
@@ -3467,19 +3480,21 @@ def generate_index(htmldir, region, sample, fullsample=None):
 
     Notes
     -----
-    Groups whose HTML output directory doesn't exist
-    (:func:`find_group_directory` returns None) are silently skipped
-    from the index. The per-group thumbnail existence check
-    (``has_thumb``) does one ``Path.exists()`` filesystem call per
-    group. The nested ``_or`` closure is redefined on every iteration
-    of the (potentially ~150k-group) loop, a minor but repeated
-    overhead.
+    Directory/thumbnail existence is resolved for all groups up front in
+    one :class:`concurrent.futures.ThreadPoolExecutor` prefetch pass
+    (threads, not processes: ``Path.exists()`` releases the GIL, so this
+    is an I/O-latency win) sized
+    ``min(32, max(8, mp * 4))`` workers, rather than two serial
+    ``Path.exists()`` calls per group inline in the main loop. Groups
+    whose HTML output directory doesn't exist are silently skipped from
+    the index.
 
     """
     import json
+    from concurrent.futures import ThreadPoolExecutor
     from SGA.SGA import SAMPLE as SAMPLE_BITS
 
-    unique_groups = np.unique(sample['GROUP_NAME'])
+    unique_groups = valid_groups if valid_groups is not None else np.unique(sample['GROUP_NAME'])
     has_d26    = 'D26'    in sample.colnames
     has_z      = 'Z'      in sample.colnames
     has_dist   = 'DIST'   in sample.colnames
@@ -3498,6 +3513,25 @@ def generate_index(htmldir, region, sample, fullsample=None):
     # unindexed version required ~52 billion string comparisons per table.
     _sample_idx = _build_group_index(sample)
     _fs_idx     = _build_group_index(fullsample) if need_fs else {}
+
+    # Resolve each group's output directory + thumbnail existence in one
+    # concurrent pass instead of two serial Path.exists() calls per group
+    # inline in the main loop below (~726k sequential stat syscalls for
+    # dr11-south's 363k groups otherwise).
+    def _resolve(group_name):
+        if valid_groups is not None:
+            group_dir = htmldir / region / str(group_name)[:3] / group_name
+        else:
+            group_dir = find_group_directory(htmldir, region, group_name)
+            if group_dir is None:
+                return str(group_name), None, False
+        thumb = group_dir / 'SGA2025_{}-thumb.jpg'.format(group_name)
+        return str(group_name), group_dir, thumb.exists()
+
+    log.info('generate_index: resolving directories/thumbnails for {} groups...'.format(len(unique_groups)))
+    io_workers = min(32, max(8, mp * 4))
+    with ThreadPoolExecutor(max_workers=io_workers) as ex:
+        _resolved = {gn: (gd, ht) for gn, gd, ht in ex.map(_resolve, unique_groups)}
 
     def _nullable(val, decimals, zero_missing=True):
         """Round `val` to `decimals` places, or return None if it is
@@ -3532,77 +3566,83 @@ def generate_index(htmldir, region, sample, fullsample=None):
 
     has_altnames = 'ALTNAMES' in sample.colnames
 
+    # Pre-extract every column read in the loop below to plain numpy arrays
+    # once, up front, rather than building a throwaway astropy Table via
+    # fancy indexing (sample[_rows] / fullsample[_fs_rows]) on every one of
+    # the (potentially 363k) iterations -- Table construction has real
+    # per-call overhead that plain array indexing avoids.
+    _sample_ra     = np.asarray(sample['GROUP_RA'])
+    _sample_dec    = np.asarray(sample['GROUP_DEC'])
+    _sample_diam   = np.asarray(sample['GROUP_DIAMETER'])
+    _sample_mult   = np.asarray(sample['GROUP_MULT'])
+    _sample_sgaid  = np.asarray(sample['SGAID'])
+    _sample_galaxy = np.asarray(sample['GALAXY'])
+    _sample_alt    = np.asarray(sample['ALTNAMES'])          if has_altnames else None
+    _sample_d26    = np.asarray(sample['D26'])                if has_d26     else None
+    _sample_z      = np.asarray(sample['Z'])                  if has_z       else None
+    _sample_dist   = np.asarray(sample['DIST'])               if has_dist    else None
+    _sample_samplecol = np.asarray(sample['SAMPLE']).astype(np.int32) if has_sample else None
+    _sample_prim   = np.asarray(sample['GROUP_PRIMARY'])      if has_prim    else None
+
+    _fs_sample = np.asarray(fullsample['SAMPLE']).astype(np.int32)      if fs_has_sample else None
+    _fs_emode  = np.asarray(fullsample['ELLIPSEMODE']).astype(np.int32) if fs_has_emode  else None
+    _fs_ebit   = np.asarray(fullsample['ELLIPSEBIT']).astype(np.int32)  if fs_has_ebit   else None
+
+    def _or_reduce(col_arr, rows):
+        """Bitwise-OR `col_arr` across `rows`, or 0 if either is unavailable/empty."""
+        if col_arr is not None and rows is not None and len(rows) > 0:
+            return int(np.bitwise_or.reduce(col_arr[rows]))
+        return 0
+
     names, sgaids, objnames, altnames = [], [], [], []
     d26s, zs, dists                   = [], [], []
     ras, decs, diams, mults = [], [], [], []
     samples, emodes, ebits  = [], [], []
     has_thumbs              = []
 
-    for group_name in unique_groups:
-        group_dir = find_group_directory(htmldir, region, group_name)
+    log.info('generate_index: building JSON payload for {} groups...'.format(len(unique_groups)))
+    report_every = max(50, len(unique_groups) // 20) if len(unique_groups) > 0 else 1
+
+    for idx, group_name in enumerate(unique_groups):
+        group_dir, has_thumb = _resolved.get(str(group_name), (None, False))
         if group_dir is None:
             continue
         _rows = _sample_idx.get(str(group_name))
         if _rows is None:
             continue
-        grp = sample[_rows]
         # Primary galaxy: prefer GROUP_PRIMARY flag, else first row
-        if has_prim and np.any(grp['GROUP_PRIMARY'] != 0):
-            prim = grp[grp['GROUP_PRIMARY'] != 0][0]
+        if has_prim:
+            _prim_mask = _sample_prim[_rows] != 0
+            prim_idx = _rows[_prim_mask][0] if np.any(_prim_mask) else _rows[0]
         else:
-            prim = grp[0]
+            prim_idx = _rows[0]
 
         names.append(str(group_name))
-        sgaids.append(str(prim['SGAID']))
-        objnames.append(str(prim['GALAXY']))
-        altnames.append(str(prim['ALTNAMES']).strip() if has_altnames else '')
-        ras.append(round(float(prim['GROUP_RA']), 6))
-        decs.append(round(float(prim['GROUP_DEC']), 6))
-        diams.append(round(float(prim['GROUP_DIAMETER']), 4))
-        mults.append(int(prim['GROUP_MULT']))
-        d26s.append( _nullable(prim['D26'],  2) if has_d26   else None)
-        zs.append(   _nullable(prim['Z'],    5) if has_z     else None)
-        dists.append(_nullable(prim['DIST'], 1) if has_dist  else None)
+        sgaids.append(str(_sample_sgaid[prim_idx]))
+        objnames.append(str(_sample_galaxy[prim_idx]))
+        altnames.append(str(_sample_alt[prim_idx]).strip() if has_altnames else '')
+        ras.append(round(float(_sample_ra[prim_idx]), 6))
+        decs.append(round(float(_sample_dec[prim_idx]), 6))
+        diams.append(round(float(_sample_diam[prim_idx]), 4))
+        mults.append(int(_sample_mult[prim_idx]))
+        d26s.append( _nullable(_sample_d26[prim_idx],  2) if has_d26   else None)
+        zs.append(   _nullable(_sample_z[prim_idx],    5) if has_z     else None)
+        dists.append(_nullable(_sample_dist[prim_idx], 1) if has_dist  else None)
         # OR bitmask columns across all group members using fullsample
         _fs_rows = _fs_idx.get(str(group_name)) if need_fs else None
-        fs_grp   = fullsample[_fs_rows] if _fs_rows is not None else None
-
-        def _or(col, fs_flag, arr):
-            """Append the bitwise-OR of `col` across this group's members
-            (from `fullsample`, if available) to `arr`; append 0 otherwise.
-
-            Parameters
-            ----------
-            col : :class:`str`
-                Column name in `fullsample` to OR-reduce (e.g.
-                ``'ELLIPSEMODE'``).
-            fs_flag : :class:`bool`
-                Whether `fullsample` actually has this column (and a
-                matching group of rows); if False, appends 0 without
-                touching `fullsample`.
-            arr : :class:`list`
-                List to append the resulting integer to, in place.
-
-            Returns
-            -------
-            None
-
-            """
-            if fs_flag and fs_grp is not None and len(fs_grp) > 0:
-                arr.append(int(np.bitwise_or.reduce(fs_grp[col].astype(np.int32))))
-            else:
-                arr.append(0)
 
         if fs_has_sample:
-            _or('SAMPLE', True, samples)
+            samples.append(_or_reduce(_fs_sample, _fs_rows))
         elif has_sample:
-            samples.append(int(np.bitwise_or.reduce(grp['SAMPLE'].astype(np.int32))))
+            samples.append(_or_reduce(_sample_samplecol, _rows))
         else:
             samples.append(0)
-        _or('ELLIPSEMODE', fs_has_emode, emodes)
-        _or('ELLIPSEBIT',  fs_has_ebit,  ebits)
-        thumb = group_dir / 'SGA2025_{}-thumb.jpg'.format(group_name)
-        has_thumbs.append(bool(thumb.exists()))
+        emodes.append(_or_reduce(_fs_emode, _fs_rows))
+        ebits.append(_or_reduce(_fs_ebit,  _fs_rows))
+        has_thumbs.append(bool(has_thumb))
+
+        if (idx + 1) % report_every == 0 or (idx + 1) == len(unique_groups):
+            log.info('generate_index: processed {}/{} groups'.format(idx + 1, len(unique_groups)))
 
     payload = {
         'region':    region,
@@ -3738,6 +3778,6 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
             for ndone, _ in enumerate(pool.imap_unordered(generate_group_html_wrapper, pool_args), start=1):
                 if ndone % report_every == 0 or ndone == len(valid_groups):
                     log.info("Processed {}/{} groups".format(ndone, len(valid_groups)))
-    generate_index(htmldir, region, sample, fullsample)
+    generate_index(htmldir, region, sample, fullsample, valid_groups=valid_groups, mp=mp)
     log.info("HTML generation complete!")
     return

@@ -2,8 +2,9 @@ SGA-2025
 ========
 
 The SGA-2025 delivers multiwavelength imaging mosaics and ellipse
-photometry for nearly half a million large, resolved galaxies across
-approximately 30,000 deg² of the extragalactic sky.
+photometry for nearly half a million galaxies with angular diameter
+:math:`>30~\mathrm{arcsec}` across approximately 30,000 deg² of the
+extragalactic sky.
 
 This page describes the organization of the public data release (v1.0),
 the naming conventions used throughout, and the data model of the primary
@@ -488,7 +489,7 @@ fits)
      - float32
      - Inverse variance of ``FLUX_{band}`` (nanomaggies\ :sup:`−2`); all 10 bands
 
-**Imaging quality and corrections**
+**Galaxy extinction and image depth**
 
 .. list-table::
    :header-rows: 1

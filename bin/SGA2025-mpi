@@ -458,6 +458,14 @@ def main():
                 log.warning('All done!')
             return
     else:
+        # Mirror rank 0's early-exit conditions above: these modes do all
+        # their work on rank 0 alone and return before reaching the
+        # comm.bcast() below, so every other rank must return here too --
+        # otherwise non-zero ranks block forever in a collective call rank 0
+        # never makes (this previously deadlocked every multi-rank
+        # --htmlindex run until the SLURM walltime killed the job).
+        if args.parse_tractor_logs or args.htmlindex or args.diameter_file or args.galaxylist_file:
+            return
         groups, suffix = [], ''
 
     if comm:
