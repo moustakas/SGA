@@ -42,7 +42,7 @@ fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
                'FLUX_IVAR_FUV', 'FLUX_IVAR_NUV']
 
 absmag_bands: ['decam_u', 'decam_g', 'decam_r', 'decam_i', 'decam_z',
-               'wise_w1', 'wise_w3', 'wise_w3', 'wise_w4',
+               'wise_w1', 'wise_w2', 'wise_w3', 'wise_w4',
                'galex_fuv', 'galex_nuv']
 
 band_shift: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

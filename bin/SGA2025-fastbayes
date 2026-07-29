@@ -1,0 +1,406 @@
+#!/usr/bin/env python
+"""SGA2025-fastbayes: run FastSpecFit's grid-based Bayesian photometric
+SED-fitting mode (fastspecfit.fastbayes, branch bayesian-mode) on the
+SGA-2025 sample.
+
+Fits every galaxy (all group members, not just GROUP_PRIMARY -- SGA groups
+are angular associations, and every member needs its own fit) using the
+peculiar-velocity-corrected redshift Z_COSMO, not the raw Z column that
+fastspecfit's own bin/fastbayes expects from a DESI Redrock file. Unlike
+bin/fastbayes (which reads DESI Redrock/coadd files via
+fastspecfit.io.DESISpectra), this driver bypasses DESI ingestion entirely
+and feeds fastspecfit's fitting core (fastbayes_one) directly from the
+SGA2025 and ELLIPSEPHOT catalog extensions -- the fitting core has no
+DESI/redrock dependency once past that ingestion layer.
+
+Each run fits exactly one photometry set, chosen with --aperture:
+
+  --aperture AP00|AP01|AP02|AP03|AP04
+      Pull FLUX_AP{nn}_{band}/FLUX_ERR_AP{nn}_{band} from ELLIPSEPHOT (the
+      fixed-ratio elliptical apertures at [0.5,1.0,1.25,1.5,2.0]xSMA_MOMENT).
+  --aperture COG
+      Pull COG_MTOT_{band}/COG_MTOT_ERR_{band} from ELLIPSEPHOT (the
+      asymptotic curve-of-growth total magnitude).
+  --aperture (omitted, default)
+      Use FLUX_{band}/FLUX_IVAR_{band} directly from the SGA2025 HDU --
+      i.e. whatever the pipeline's adopted nominal photometry currently is
+      (recorded per galaxy in FLUX_REF/SMA_FLUX), without ever reading
+      ELLIPSEPHOT. This is the mode to (re-)run once a final/hybrid choice
+      of default photometry has been made upstream, without needing to
+      know or care which aperture(s) that choice draws on.
+
+Running the other choices is a separate, explicit invocation per aperture
+-- this script does not sweep multiple apertures itself.
+
+Writes, to --outdir (default $SGA_DIR/fastbayes):
+  SGA2025-fastbayes-{version}.fits (--aperture omitted), or
+  SGA2025-fastbayes-{aperture}-{version}.fits (--aperture given) --
+  METADATA and FASTBAYES extensions, plus WAVE/MODELS (refined rest-frame
+  model spectra) unless --no-models.
+"""
+import os
+import time
+import logging
+import argparse
+from importlib import resources
+
+import numpy as np
+import fitsio
+from astropy.table import Table
+
+from SGA.SGA import read_sga_sample, sga_dir, SGA_version
+from SGA.coadds import REGIONBITS
+from SGA.io import table_to_fitsio
+from SGA.logger import log
+
+from fastspecfit.fastbayes import (_initialize_fastbayes_workers, fastbayes_one,
+                                   get_fastbayes_dtype, bg_data)
+from fastspecfit.photometry import Photometry
+from fastspecfit.util import MPPool
+
+
+EXPLICIT_APERTURE_CHOICES = ('AP00', 'AP01', 'AP02', 'AP03', 'AP04', 'COG')
+
+
+def _worker_init(verbose=False, **init_argdict):
+    """`MPPool` worker initializer: set the 'fastspec' log level, then load
+    the grid/photometry singletons.
+
+    Must be a module-level function (not defined inside ``main()``) so it's
+    picklable by ``multiprocessing`` under the ``spawn`` start method
+    (macOS's default): each worker is a fresh interpreter that re-imports
+    ``fastspecfit.fastbayes`` from scratch, re-running its module-level
+    ``getFastspecLogger()`` call and resetting the 'fastspec' logger back to
+    its default ``INFO`` level -- so setting that level only in the main
+    process (as ``main()`` already does, for the ``--mp 1``/serial path)
+    never reaches actual subprocess workers; it has to happen again here,
+    as the first thing each worker does.
+
+    """
+    logging.getLogger('fastspec').setLevel(logging.DEBUG if verbose else logging.WARNING)
+    _initialize_fastbayes_workers(**init_argdict)
+
+
+def mag2flux_ivar(mag, magerr):
+    """Convert an AB magnitude + uncertainty to nanomaggies + inverse variance.
+
+    Non-finite or non-positive input -- the ELLIPSEPHOT sentinel for an
+    unfit COG_MTOT/COG_MTOT_ERR is 0.0, confirmed against the real catalog
+    -- returns (0., 0.) rather than dividing by zero.
+
+    """
+    good = np.isfinite(mag) and np.isfinite(magerr) and (magerr > 0.)
+    if not good:
+        return 0., 0.
+    flux = 10.**(-0.4 * (mag - 22.5))
+    fluxerr = flux * 0.4 * np.log(10.) * magerr
+    return flux, 1. / fluxerr**2
+
+
+def build_fit_rows(sga, ellipsephot, phot, aperture):
+    """Build one (data, meta, tracking) triple per galaxy.
+
+    Parameters
+    ----------
+    sga : `astropy.table.Table`
+        Full-group-member SGA2025 sample (already filtered to
+        ``Z_COSMO_IVAR>0``).
+    ellipsephot : `astropy.table.Table` or None
+        Row-matched ELLIPSEPHOT table (same length/order as ``sga``).
+        Required (non-None) unless ``aperture is None``.
+    phot : `fastspecfit.photometry.Photometry`
+        Photometry configuration (bands, fluxcols).
+    aperture : str or None
+        One of `EXPLICIT_APERTURE_CHOICES`, or ``None`` for the SGA2025
+        HDU's own nominal ``FLUX_*``/``FLUX_IVAR_*`` columns.
+
+    Returns
+    -------
+    datalist : list of dict
+        Per-fit ``{'uniqueid', 'redshift', 'photsys'}`` inputs.
+    metalist : list of dict
+        Per-fit photometry (``FLUX_{BAND}``/``FLUX_IVAR_{BAND}``/
+        ``MW_TRANSMISSION_{BAND}``), mutated in place by ``fastbayes_one``.
+    trackrows : list of dict
+        ``SGAID``/``GALAXY``/``APERTURE``/``SMA_AP``/``RA``/``DEC``/
+        ``Z_COSMO`` bookkeeping columns for the output ``METADATA`` table.
+        ``APERTURE``/``SMA_AP`` are per-galaxy (copied from SGA2025's own
+        ``FLUX_REF``/``SMA_FLUX``) when ``aperture is None``, since the
+        nominal photometry need not be the same aperture for every galaxy.
+
+    """
+    south = REGIONBITS['dr11-south']
+    bands = phot.bands
+    iap = int(aperture[2:]) if aperture not in (None, 'COG') else None
+
+    datalist, metalist, trackrows = [], [], []
+
+    for i in range(len(sga)):
+        row = sga[i]
+        photsys = 'S' if (row['REGION'] & south) else 'N'
+        redshift = float(row['Z_COSMO'])
+
+        meta = {}
+        for band in bands:
+            B = band.upper()
+            meta[f'MW_TRANSMISSION_{B}'] = float(row[f'MW_TRANSMISSION_{B}'])
+
+            if aperture is None:
+                flux = float(row[f'FLUX_{B}'])
+                ivar = float(row[f'FLUX_IVAR_{B}'])
+                if not (np.isfinite(ivar) and ivar > 0.):
+                    ivar = 0.
+            elif aperture == 'COG':
+                erow = ellipsephot[i]
+                flux, ivar = mag2flux_ivar(float(erow[f'COG_MTOT_{B}']),
+                                           float(erow[f'COG_MTOT_ERR_{B}']))
+            else:
+                erow = ellipsephot[i]
+                flux = float(erow[f'FLUX_AP{iap:02d}_{B}'])
+                err = float(erow[f'FLUX_ERR_AP{iap:02d}_{B}'])
+                ivar = 1. / err**2 if (np.isfinite(err) and err > 0.) else 0.
+
+            meta[f'FLUX_{B}'] = flux
+            meta[f'FLUX_IVAR_{B}'] = ivar
+
+        datalist.append({'uniqueid': f"{row['SGAID']}_{aperture or 'DEFAULT'}",
+                         'redshift': redshift, 'photsys': photsys})
+        metalist.append(meta)
+
+        if aperture is None:
+            ap_label, sma_ap = row['FLUX_REF'], float(row['SMA_FLUX'])
+        elif aperture == 'COG':
+            ap_label, sma_ap = 'COG', -1.0
+        else:
+            ap_label, sma_ap = aperture, float(ellipsephot[i][f'SMA_AP{iap:02d}'])
+
+        trackrows.append({
+            'SGAID': row['SGAID'],
+            'GALAXY': row['GALAXY'],
+            'APERTURE': ap_label,
+            'SMA_AP': sma_ap,
+            'RA': row['RA'],
+            'DEC': row['DEC'],
+            'Z_COSMO': redshift,
+        })
+
+    return datalist, metalist, trackrows
+
+
+def run_fits_with_progress(mp_pool, fitargs, label=''):
+    """Run ``fitargs`` through ``mp_pool.starmap(fastbayes_one, ...)`` in
+    chunks, logging periodic rate/ETA progress.
+
+    ``MPPool.starmap`` (and the underlying ``multiprocessing.Pool.starmap``
+    it wraps) blocks until the *entire* list it's given completes, with no
+    progress feedback of its own -- for a few hundred thousand fits that's a
+    long silent wait. Splitting the work into ~10,000-fit chunks and calling
+    ``starmap`` once per chunk (against the same, already-initialized pool)
+    gives periodic progress at negligible overhead, matching the logging
+    style of ``build-bayesian-templates``/``build-bayesian-photometry``.
+
+    Parameters
+    ----------
+    mp_pool : `fastspecfit.util.MPPool`
+        Already-constructed (and already-initialized) worker pool.
+    fitargs : list of dict
+        Per-fit keyword-argument dicts for `fastspecfit.fastbayes.fastbayes_one`.
+    label : str, optional
+        Prefix for progress log messages.
+
+    Returns
+    -------
+    list
+        One ``(meta, result, modelspectrum)`` tuple per input fit, in order.
+
+    """
+    n = len(fitargs)
+    nchunks = int(np.clip(n // 10000, 1, 50))
+    chunk_bounds = np.array_split(np.arange(n), nchunks)
+
+    out = []
+    t0 = time.time()
+    ndone = 0
+    for bounds in chunk_bounds:
+        chunk = [fitargs[i] for i in bounds]
+        out.extend(mp_pool.starmap(fastbayes_one, chunk))
+        ndone += len(chunk)
+        rate = ndone / (time.time() - t0) # [fits/sec]
+        remaining = (n - ndone) / rate / 60. # [min]
+        log.info(f'{label}{ndone:,d}/{n:,d} fits ({100. * ndone / n:.1f}%) done in '
+                 f'{(time.time() - t0) / 60.:.1f} min; ~{remaining:.1f} min remaining')
+
+    return out
+
+
+def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
+                 modelspectra, write_models):
+    """Assemble and write the METADATA/FASTBAYES(/WAVE/MODELS) output file."""
+    metatbl = Table(trackrows)
+    for band in phot.bands:
+        B = band.upper()
+        metatbl[f'FLUX_{B}'] = np.array([m[f'FLUX_{B}'] for m in metas], dtype='f4')
+        metatbl[f'FLUX_IVAR_{B}'] = np.array([m[f'FLUX_IVAR_{B}'] for m in metas], dtype='f4')
+
+    # np.array(a_tuple_of_structured_scalars, dtype=struct_dtype) misparses
+    # the outer tuple as a single record's field values rather than a
+    # sequence of records -- must be a list.
+    resultstbl = Table(np.array(list(results), dtype=fastbayes_dtype))
+
+    vals, names, units = table_to_fitsio(metatbl)
+    rvals, rnames, runits = table_to_fitsio(resultstbl)
+
+    with fitsio.FITS(outfile, 'rw', clobber=True) as F:
+        F.write(vals, names=names, units=units, extname='METADATA')
+        F.write(rvals, names=rnames, units=runits, extname='FASTBAYES')
+        if write_models:
+            F.write(bg_data.template_wave().astype('f4'), extname='WAVE')
+            F.write(np.array(modelspectra, dtype='f4'), extname='MODELS')
+
+    log.info(f'Wrote {len(trackrows):,d} fits to {outfile}')
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--gridfile', required=True,
+                        help='Full path to the Bayesian photometry grid file '
+                        '(output of fastspecfit bin/build-bayesian-photometry).')
+    parser.add_argument('--templatedir', default=None,
+                        help='Top-level location of the raw Bayesian templates file '
+                        '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile '
+                        'is given. Only needed when writing MODELS (see --no-models).')
+    parser.add_argument('--templatesfile', default=None,
+                        help='Full path to the raw Bayesian templates FITS file '
+                        '(output of fastspecfit bin/build-bayesian-templates), overriding '
+                        '--templatedir/$FTEMPLATES_DIR reconstruction. Only needed when '
+                        'writing MODELS (see --no-models).')
+    parser.add_argument('--fphotofile', default=None,
+                        help='Photometry configuration YAML (default: bundled '
+                        'SGA2025-photinfo.yaml).')
+    parser.add_argument('--aperture', default=None, choices=EXPLICIT_APERTURE_CHOICES,
+                        help='Photometry set to fit: one of {} (from ELLIPSEPHOT), '
+                        'or omit this flag entirely to use the SGA2025 HDU\'s own '
+                        'nominal FLUX_*/FLUX_IVAR_* columns (default).'
+                        .format(','.join(EXPLICIT_APERTURE_CHOICES)))
+    parser.add_argument('--outdir', default=None,
+                        help='Output directory (default: $SGA_DIR/fastbayes)')
+    parser.add_argument('--version', default=None,
+                        help='Version suffix for the output filename '
+                        '(default: SGA_version(catalog=True))')
+    parser.add_argument('--mp', type=int, default=1,
+                        help='Number of multiprocessing workers.')
+    parser.add_argument('-n', '--ntargets', type=int, default=None,
+                        help='Process only the first N objects (debugging).')
+    parser.add_argument('--sgaid-list', default=None,
+                        help='Comma-separated SGAID values to restrict to (debugging).')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01,
+                        help='Minimum fractional photometric uncertainty added in '
+                        'quadrature to the formal inverse variance.')
+    parser.add_argument('--no-models', action='store_true',
+                        help='Skip writing the WAVE/MODELS extensions (written by '
+                        'default).')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite an existing output file.')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Be verbose (for debugging purposes).')
+    return parser.parse_args()
+
+
+def main():
+    args = _parse_args()
+
+    # fastspecfit.fastbayes.fastbayes_one logs one INFO line per object via
+    # a single global logger named 'fastspec' -- fine for DESI-scale runs,
+    # but unusable at SGA's few-hundred-thousand-object scale. Suppress it
+    # by default; --verbose restores it (at DEBUG, to also pick up any
+    # DEBUG-level detail fastspecfit logs elsewhere).
+    logging.getLogger('fastspec').setLevel(logging.DEBUG if args.verbose else logging.WARNING)
+
+    label = args.aperture or 'DEFAULT'
+
+    outdir = args.outdir or os.path.join(sga_dir(), 'fastbayes')
+    os.makedirs(outdir, exist_ok=True)
+
+    version = args.version or SGA_version(catalog=True)
+    namebit = f'-{args.aperture}' if args.aperture is not None else ''
+    outfile = os.path.join(outdir, f'SGA2025-fastbayes{namebit}-{version}.fits')
+
+    if os.path.isfile(outfile) and not args.overwrite:
+        log.info(f'Output {outfile} exists; use --overwrite to regenerate.')
+        return
+
+    gridfile = os.path.expandvars(args.gridfile)
+    if not os.path.isfile(gridfile):
+        errmsg = f'Bayesian grid file {gridfile} not found.'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+
+    fphotofile = args.fphotofile
+    if fphotofile is None:
+        fphotofile = str(resources.files('SGA').joinpath('data/SGA2025-photinfo.yaml'))
+
+    log.info('Reading the SGA2025 sample (all group members)...')
+    _, sga = read_sga_sample()
+
+    ellipsephot = None
+    if args.aperture is not None:
+        log.info('Reading ELLIPSEPHOT...')
+        _, ellipsephot = read_sga_sample(ellipsephot=True)
+
+    if args.sgaid_list is not None:
+        want = set(int(s) for s in args.sgaid_list.split(','))
+        keep = np.array([int(sid) in want for sid in sga['SGAID']])
+        sga = sga[keep]
+        if ellipsephot is not None:
+            ellipsephot = ellipsephot[keep]
+
+    good = sga['Z_COSMO_IVAR'] > 0
+    log.info(f'{np.count_nonzero(good):,d}/{len(sga):,d} objects have a usable Z_COSMO.')
+    sga = sga[good]
+    if ellipsephot is not None:
+        ellipsephot = ellipsephot[good]
+
+    if args.ntargets is not None:
+        sga = sga[:args.ntargets]
+        if ellipsephot is not None:
+            ellipsephot = ellipsephot[:args.ntargets]
+
+    phot = Photometry(fphotofile=fphotofile)
+
+    # Populate sc_data.photometry/bg_data in the main process (also serves
+    # the --mp 1 serial-fitting path, since MPPool never spawns subprocess
+    # workers -- and so never runs the initializer -- when nworkers<=1).
+    # The raw templates file is required regardless of --no-models: the
+    # sub-grid-refined model spectrum is computed as part of every fit
+    # (fastbayes_one always returns a modelspectrum), --no-models only
+    # skips writing it to the output file.
+    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile,
+                    'templatedir': args.templatedir, 'templatesfile': args.templatesfile}
+    _initialize_fastbayes_workers(**init_argdict)
+
+    fastbayes_dtype = get_fastbayes_dtype(phot, topk=0)
+
+    log.info(f'Aperture {label}: {len(sga):,d} objects.')
+    datalist, metalist, trackrows = build_fit_rows(sga, ellipsephot, phot, args.aperture)
+    nfits = len(datalist)
+
+    fitargs = [{
+        'iobj': i, 'data': datalist[i], 'meta': metalist[i],
+        'fastbayes_dtype': fastbayes_dtype, 'topk': 0,
+        'uncertainty_floor': args.uncertainty_floor,
+    } for i in range(nfits)]
+
+    mp_pool = MPPool(args.mp, initializer=_worker_init,
+                     init_argdict={**init_argdict, 'verbose': args.verbose})
+    out = run_fits_with_progress(mp_pool, fitargs, label=f'[{label}] ')
+    mp_pool.close()
+
+    metas, results, modelspectra = zip(*out)
+
+    write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
+                modelspectra, write_models=not args.no_models)
+
+
+if __name__ == '__main__':
+    main()
