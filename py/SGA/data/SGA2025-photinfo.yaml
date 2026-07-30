@@ -29,7 +29,7 @@ synth_filters: {
       'galex-fuv', 'galex-nuv'],
 }
 
-min_uncertainty: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+min_uncertainty: [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
 
 readcols: ['SGAID', 'RA', 'DEC']
 
