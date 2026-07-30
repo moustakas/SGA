@@ -32,6 +32,18 @@ Each run fits exactly one photometry set, chosen with --aperture:
 Running the other choices is a separate, explicit invocation per aperture
 -- this script does not sweep multiple apertures itself.
 
+Usage
+-----
+::
+
+  SGA2025-fastbayes --mp 16
+
+With $SGA_DIR set, this is the full default invocation: --aperture,
+--gridfile, --templatesfile, --fphotofile, --outdir, and --version all
+fall back to their SGA-convenience defaults (see below), fitting the
+SGA2025 HDU's own nominal photometry and writing
+$SGA_DIR/fastbayes/SGA2025-fastbayes-{version}.fits.
+
 Writes, to --outdir (default $SGA_DIR/fastbayes):
   SGA2025-fastbayes-{version}.fits (--aperture omitted), or
   SGA2025-fastbayes-{aperture}-{version}.fits (--aperture given) --
@@ -351,6 +363,23 @@ def main():
         errmsg = f'Bayesian grid file {gridfile} not found.'
         log.critical(errmsg)
         raise IOError(errmsg)
+
+    # Fail here, with a clear diagnosis, rather than deep inside
+    # BayesianGrid.load() -- the same FPHOTO_FILE dependency check it
+    # performs, but before the (slow) SGA2025 sample read below. The
+    # easiest way to end up here is passing a bin/SGA2025-fastbayes
+    # *output* file (no dependency headers) as --gridfile by mistake,
+    # instead of a real bin/build-bayesian-photometry grid file.
+    from desiutil.depend import getdep
+    try:
+        getdep(fitsio.read_header(gridfile, ext=0), 'FPHOTO_FILE')
+    except KeyError:
+        errmsg = (f'{gridfile} has no FPHOTO_FILE dependency header, so it is not a valid '
+                  'bin/build-bayesian-photometry grid file -- did you pass a bin/SGA2025-fastbayes '
+                  '*output* file (or some other FITS file) as --gridfile by mistake? Omit --gridfile '
+                  'entirely to use the default.')
+        log.critical(errmsg)
+        raise IOError(errmsg) from None
 
     # Only apply the SGA-convenience default when the user hasn't opted into
     # fastspecfit's own --templatedir-based reconstruction instead.
