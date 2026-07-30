@@ -1,0 +1,105 @@
+#!/usr/bin/env python
+"""SGA2025-fastbayes-qa: regenerate QA figures for a bin/SGA2025-fastbayes
+output file, without repeating the fit.
+
+Thin argument-translating wrapper around
+fastspecfit.fastbayes.fastbayes_qa() (branch bayesian-mode) -- all the
+actual file-reading/looping/plotting logic lives there and is reused
+unmodified. This script exists only to (a) default --fphotofile to the
+bundled SGA2025-photinfo.yaml, (b) always pass --coadd-type external
+(fastspecfit's generic, non-DESI target-labeling mode -- SGA data has no
+SURVEY/PROGRAM/HEALPIX/TARGETID structure, so this is the only sensible
+choice and isn't worth exposing as a flag), and (c) accept --sgaid-list
+(matching bin/SGA2025-fastbayes's own naming) in place of fastspecfit's
+--uniqueids.
+
+The image cutout in each QA figure is still fastspecfit's generic Legacy
+Survey viewer JPEG fetch (by RA/Dec) -- swapping in the actual SGA mosaic
+is a separate, later piece of work.
+
+Usage
+-----
+::
+
+  SGA2025-fastbayes-qa /path/to/SGA2025-fastbayes-AP04-v1.0.fits \\
+      --gridfile /path/to/bayesian-photometry-chabrier-001.fits \\
+      --sgaid-list 1,3,8
+
+Writes QA PNGs to --qadir (default $SGA_DIR/fastbayes/qa).
+"""
+import os
+import argparse
+from importlib import resources
+
+from SGA.SGA import sga_dir
+
+from fastspecfit.fastbayes import fastbayes_qa
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('fastbayesfile',
+                        help='Full path to an existing bin/SGA2025-fastbayes output FITS file.')
+    parser.add_argument('--gridfile', default=None,
+                        help='Full path to the Bayesian photometry grid file used to produce '
+                        '--fastbayesfile (must match the --gridfile used at fit time). '
+                        'Default: $SGA_DIR/fastbayes/bayesian-photometry-chabrier-001.fits')
+    parser.add_argument('--fphotofile', default=None,
+                        help='Photometry configuration YAML used to produce --fastbayesfile '
+                        '(default: bundled SGA2025-photinfo.yaml; pass the same one used at '
+                        'fit time if it was overridden there).')
+    parser.add_argument('--qadir', default=None,
+                        help='Output directory for QA figures (default: $SGA_DIR/fastbayes/qa)')
+    parser.add_argument('--sgaid-list', default=None,
+                        help='Comma-separated SGAID values to restrict to.')
+    parser.add_argument('-n', '--ntargets', type=int, default=None,
+                        help='Number of objects to process.')
+    parser.add_argument('--firsttarget', type=int, default=0,
+                        help='Index of first object to process, zero-indexed.')
+    parser.add_argument('--mp', type=int, default=1,
+                        help='Number of multiprocessing workers.')
+    parser.add_argument('--ndraw', type=int, default=50,
+                        help='Number of additional posterior-draw model spectra to overplot '
+                        '(0 disables).')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Be verbose (for debugging purposes).')
+    return parser.parse_args()
+
+
+def main():
+    args = _parse_args()
+
+    qadir = args.qadir or os.path.join(sga_dir(), 'fastbayes', 'qa')
+    os.makedirs(qadir, exist_ok=True)
+
+    gridfile = args.gridfile
+    if gridfile is None:
+        gridfile = os.path.join(sga_dir(), 'fastbayes', 'bayesian-photometry-chabrier-001.fits')
+
+    fphotofile = args.fphotofile
+    if fphotofile is None:
+        fphotofile = str(resources.files('SGA').joinpath('data/SGA2025-photinfo.yaml'))
+
+    qa_args = [
+        args.fastbayesfile,
+        '--gridfile', gridfile,
+        '--fphotofile', fphotofile,
+        '--coadd-type', 'external',
+        '--qadir', qadir,
+        '--firsttarget', str(args.firsttarget),
+        '--mp', str(args.mp),
+        '--ndraw', str(args.ndraw),
+    ]
+    if args.sgaid_list is not None:
+        qa_args += ['--uniqueids', args.sgaid_list]
+    if args.ntargets is not None:
+        qa_args += ['--ntargets', str(args.ntargets)]
+    if args.verbose:
+        qa_args += ['--verbose']
+
+    return fastbayes_qa(args=qa_args)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

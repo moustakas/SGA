@@ -35,8 +35,12 @@ Running the other choices is a separate, explicit invocation per aperture
 Writes, to --outdir (default $SGA_DIR/fastbayes):
   SGA2025-fastbayes-{version}.fits (--aperture omitted), or
   SGA2025-fastbayes-{aperture}-{version}.fits (--aperture given) --
-  METADATA and FASTBAYES extensions, plus WAVE/MODELS (refined rest-frame
-  model spectra) unless --no-models.
+  METADATA (SGAID/GALAXY/APERTURE/SMA_AP/RA/DEC/Z/PHOTSYS/FLUX_*/
+  FLUX_IVAR_*) and FASTBAYES (also carries SGAID, redundantly, so it's
+  usable without cross-referencing METADATA) extensions, plus WAVE/MODELS
+  (refined rest-frame model spectra) unless --no-models. Z is Z_COSMO,
+  renamed on output to match the column name bin/fastbayes-qa (and
+  fastspecfit.fastbayes.fastbayes_qa_one) expects to read back.
 """
 import os
 import time
@@ -122,8 +126,11 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
         Per-fit photometry (``FLUX_{BAND}``/``FLUX_IVAR_{BAND}``/
         ``MW_TRANSMISSION_{BAND}``), mutated in place by ``fastbayes_one``.
     trackrows : list of dict
-        ``SGAID``/``GALAXY``/``APERTURE``/``SMA_AP``/``RA``/``DEC``/
-        ``Z_COSMO`` bookkeeping columns for the output ``METADATA`` table.
+        ``SGAID``/``GALAXY``/``APERTURE``/``SMA_AP``/``RA``/``DEC``/``Z``/
+        ``PHOTSYS`` bookkeeping columns for the output ``METADATA`` table
+        (``Z`` is ``Z_COSMO``, renamed on output so a downstream reader --
+        e.g. ``fastbayes_qa_one``, which reads ``meta['Z']`` literally --
+        never has to know which redshift column this project adopted).
         ``APERTURE``/``SMA_AP`` are per-galaxy (copied from SGA2025's own
         ``FLUX_REF``/``SMA_FLUX``) when ``aperture is None``, since the
         nominal photometry need not be the same aperture for every galaxy.
@@ -163,8 +170,8 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
             meta[f'FLUX_{B}'] = flux
             meta[f'FLUX_IVAR_{B}'] = ivar
 
-        datalist.append({'uniqueid': f"{row['SGAID']}_{aperture or 'DEFAULT'}",
-                         'redshift': redshift, 'photsys': photsys})
+        datalist.append({'uniqueid': int(row['SGAID']), 'redshift': redshift,
+                         'photsys': photsys})
         metalist.append(meta)
 
         if aperture is None:
@@ -181,7 +188,8 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
             'SMA_AP': sma_ap,
             'RA': row['RA'],
             'DEC': row['DEC'],
-            'Z_COSMO': redshift,
+            'Z': redshift,
+            'PHOTSYS': photsys,
         })
 
     return datalist, metalist, trackrows
@@ -246,6 +254,10 @@ def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
     # the outer tuple as a single record's field values rather than a
     # sequence of records -- must be a list.
     resultstbl = Table(np.array(list(results), dtype=fastbayes_dtype))
+    # Redundant with METADATA (both are row-matched, same order), but having
+    # SGAID directly on FASTBAYES means a reader never has to open/join
+    # METADATA just to know which galaxy a given results row belongs to.
+    resultstbl.add_column(metatbl['SGAID'], index=0)
 
     vals, names, units = table_to_fitsio(metatbl)
     rvals, rnames, runits = table_to_fitsio(resultstbl)
@@ -263,18 +275,22 @@ def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
 def _parse_args():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--gridfile', required=True,
+    parser.add_argument('--gridfile', default=None,
                         help='Full path to the Bayesian photometry grid file '
-                        '(output of fastspecfit bin/build-bayesian-photometry).')
+                        '(output of fastspecfit bin/build-bayesian-photometry). '
+                        'Default: $SGA_DIR/fastbayes/bayesian-photometry-chabrier-001.fits')
     parser.add_argument('--templatedir', default=None,
                         help='Top-level location of the raw Bayesian templates file '
                         '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile '
-                        'is given. Only needed when writing MODELS (see --no-models).')
+                        'is given (or defaulted, see below). Only needed when writing '
+                        'MODELS (see --no-models).')
     parser.add_argument('--templatesfile', default=None,
                         help='Full path to the raw Bayesian templates FITS file '
                         '(output of fastspecfit bin/build-bayesian-templates), overriding '
                         '--templatedir/$FTEMPLATES_DIR reconstruction. Only needed when '
-                        'writing MODELS (see --no-models).')
+                        'writing MODELS (see --no-models). Default (when --templatedir is '
+                        'also not given): '
+                        '$SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits')
     parser.add_argument('--fphotofile', default=None,
                         help='Photometry configuration YAML (default: bundled '
                         'SGA2025-photinfo.yaml).')
@@ -294,9 +310,6 @@ def _parse_args():
                         help='Process only the first N objects (debugging).')
     parser.add_argument('--sgaid-list', default=None,
                         help='Comma-separated SGAID values to restrict to (debugging).')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01,
-                        help='Minimum fractional photometric uncertainty added in '
-                        'quadrature to the formal inverse variance.')
     parser.add_argument('--no-models', action='store_true',
                         help='Skip writing the WAVE/MODELS extensions (written by '
                         'default).')
@@ -330,11 +343,20 @@ def main():
         log.info(f'Output {outfile} exists; use --overwrite to regenerate.')
         return
 
-    gridfile = os.path.expandvars(args.gridfile)
+    gridfile = args.gridfile
+    if gridfile is None:
+        gridfile = os.path.join(sga_dir(), 'fastbayes', 'bayesian-photometry-chabrier-001.fits')
+    gridfile = os.path.expandvars(gridfile)
     if not os.path.isfile(gridfile):
         errmsg = f'Bayesian grid file {gridfile} not found.'
         log.critical(errmsg)
         raise IOError(errmsg)
+
+    # Only apply the SGA-convenience default when the user hasn't opted into
+    # fastspecfit's own --templatedir-based reconstruction instead.
+    templatesfile = args.templatesfile
+    if templatesfile is None and args.templatedir is None:
+        templatesfile = os.path.join(sga_dir(), 'fastbayes', 'bayesian-templates-chabrier-001.fits')
 
     fphotofile = args.fphotofile
     if fphotofile is None:
@@ -376,7 +398,7 @@ def main():
     # (fastbayes_one always returns a modelspectrum), --no-models only
     # skips writing it to the output file.
     init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile,
-                    'templatedir': args.templatedir, 'templatesfile': args.templatesfile}
+                    'templatedir': args.templatedir, 'templatesfile': templatesfile}
     _initialize_fastbayes_workers(**init_argdict)
 
     fastbayes_dtype = get_fastbayes_dtype(phot, topk=0)
@@ -388,7 +410,6 @@ def main():
     fitargs = [{
         'iobj': i, 'data': datalist[i], 'meta': metalist[i],
         'fastbayes_dtype': fastbayes_dtype, 'topk': 0,
-        'uncertainty_floor': args.uncertainty_floor,
     } for i in range(nfits)]
 
     mp_pool = MPPool(args.mp, initializer=_worker_init,
