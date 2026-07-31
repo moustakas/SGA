@@ -32,6 +32,27 @@ Each run fits exactly one photometry set, chosen with --aperture:
 Running the other choices is a separate, explicit invocation per aperture
 -- this script does not sweep multiple apertures itself.
 
+Regenerating the grid
+----------------------
+The grid axis design (age bins, dust/fagn parameters, etc.) is recorded in
+py/SGA/data/SGA2025-bayesian-grid.yaml -- our own copy of fastspecfit's
+bundled data/bayesian-grid.yaml, kept alongside the code as a record of
+which grid design produced the current --templatesfile/--gridfile
+defaults below. To rebuild both from scratch after a grid-design change::
+
+  build-bayesian-templates --gridnumber=001 \\
+      --paramsfile=$SGA_CODE_DIR/py/SGA/data/SGA2025-bayesian-grid.yaml \\
+      --templatedir=$SGA_DIR/fastbayes
+
+  build-bayesian-photometry \\
+      --outfile=$SGA_DIR/fastbayes/bayesian-photometry-chabrier-001.fits \\
+      --templatesfile=$SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits \\
+      --fphotofile=$SGA_CODE_DIR/py/SGA/data/SGA2025-photinfo.yaml \\
+      --adaptive --nz=100 --zmax=0.6
+
+(both are fastspecfit bin/ scripts, not SGA scripts.) Rerun this script
+with --overwrite afterwards to refit against the new grid.
+
 Usage
 -----
 ::
@@ -48,11 +69,17 @@ Writes, to --outdir (default $SGA_DIR/fastbayes):
   SGA2025-fastbayes-{version}.fits (--aperture omitted), or
   SGA2025-fastbayes-{aperture}-{version}.fits (--aperture given) --
   METADATA (SGAID/GALAXY/APERTURE/SMA_AP/RA/DEC/Z/PHOTSYS/FLUX_*/
-  FLUX_IVAR_*) and FASTBAYES (also carries SGAID, redundantly, so it's
-  usable without cross-referencing METADATA) extensions, plus WAVE/MODELS
-  (refined rest-frame model spectra) unless --no-models. Z is Z_COSMO,
-  renamed on output to match the column name bin/fastbayes-qa (and
+  FLUX_IVAR_*/FLUX_SYNTH_PHOTMODEL_*) and FASTBAYES (also carries SGAID,
+  redundantly, so it's usable without cross-referencing METADATA)
+  extensions. No WAVE/MODELS extensions: fastspecfit.fastbayes no longer
+  returns/persists the refined rest-frame model spectrum per object --
+  bin/fastbayes-qa rebuilds it on demand from the raw templates file
+  instead (cheap and deterministic). Z is Z_COSMO, renamed on output to
+  match the column name bin/fastbayes-qa (and
   fastspecfit.fastbayes.fastbayes_qa_one) expects to read back.
+  FLUX_SYNTH_PHOTMODEL_* is the grid's best-fit observed-frame model
+  photometry (nanomaggies), a free byproduct of the fit added to meta by
+  fastbayes_one -- distinct from the input FLUX_*/FLUX_IVAR_*.
 """
 import os
 import time
@@ -70,7 +97,7 @@ from SGA.io import table_to_fitsio
 from SGA.logger import log
 
 from fastspecfit.fastbayes import (_initialize_fastbayes_workers, fastbayes_one,
-                                   get_fastbayes_dtype, bg_data)
+                                   get_fastbayes_dtype)
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import MPPool
 
@@ -136,7 +163,9 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
         Per-fit ``{'uniqueid', 'redshift', 'photsys'}`` inputs.
     metalist : list of dict
         Per-fit photometry (``FLUX_{BAND}``/``FLUX_IVAR_{BAND}``/
-        ``MW_TRANSMISSION_{BAND}``), mutated in place by ``fastbayes_one``.
+        ``MW_TRANSMISSION_{BAND}``), mutated in place by ``fastbayes_one``
+        (which also adds ``FLUX_SYNTH_PHOTMODEL_{BAND}``, the grid's
+        best-fit observed-frame model photometry).
     trackrows : list of dict
         ``SGAID``/``GALAXY``/``APERTURE``/``SMA_AP``/``RA``/``DEC``/``Z``/
         ``PHOTSYS`` bookkeeping columns for the output ``METADATA`` table
@@ -231,7 +260,7 @@ def run_fits_with_progress(mp_pool, fitargs, label=''):
     Returns
     -------
     list
-        One ``(meta, result, modelspectrum)`` tuple per input fit, in order.
+        One ``(meta, result)`` tuple per input fit, in order.
 
     """
     n = len(fitargs)
@@ -253,14 +282,15 @@ def run_fits_with_progress(mp_pool, fitargs, label=''):
     return out
 
 
-def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
-                 modelspectra, write_models):
-    """Assemble and write the METADATA/FASTBAYES(/WAVE/MODELS) output file."""
+def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype):
+    """Assemble and write the METADATA/FASTBAYES output file."""
     metatbl = Table(trackrows)
     for band in phot.bands:
         B = band.upper()
         metatbl[f'FLUX_{B}'] = np.array([m[f'FLUX_{B}'] for m in metas], dtype='f4')
         metatbl[f'FLUX_IVAR_{B}'] = np.array([m[f'FLUX_IVAR_{B}'] for m in metas], dtype='f4')
+        metatbl[f'FLUX_SYNTH_PHOTMODEL_{B}'] = np.array(
+            [m[f'FLUX_SYNTH_PHOTMODEL_{B}'] for m in metas], dtype='f4')
 
     # np.array(a_tuple_of_structured_scalars, dtype=struct_dtype) misparses
     # the outer tuple as a single record's field values rather than a
@@ -277,9 +307,6 @@ def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
     with fitsio.FITS(outfile, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='METADATA')
         F.write(rvals, names=rnames, units=runits, extname='FASTBAYES')
-        if write_models:
-            F.write(bg_data.template_wave().astype('f4'), extname='WAVE')
-            F.write(np.array(modelspectra, dtype='f4'), extname='MODELS')
 
     log.info(f'Wrote {len(trackrows):,d} fits to {outfile}')
 
@@ -294,15 +321,15 @@ def _parse_args():
     parser.add_argument('--templatedir', default=None,
                         help='Top-level location of the raw Bayesian templates file '
                         '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile '
-                        'is given (or defaulted, see below). Only needed when writing '
-                        'MODELS (see --no-models).')
+                        'is given (or defaulted, see below). Always required: the '
+                        'sub-grid-refined model spectrum used to derive LOGMSTAR/SFR/'
+                        'DN4000_MODEL/etc. is computed from it as part of every fit.')
     parser.add_argument('--templatesfile', default=None,
                         help='Full path to the raw Bayesian templates FITS file '
                         '(output of fastspecfit bin/build-bayesian-templates), overriding '
-                        '--templatedir/$FTEMPLATES_DIR reconstruction. Only needed when '
-                        'writing MODELS (see --no-models). Default (when --templatedir is '
-                        'also not given): '
-                        '$SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits')
+                        '--templatedir/$FTEMPLATES_DIR reconstruction. Always required '
+                        '(see --templatedir). Default (when --templatedir is also not '
+                        'given): $SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits')
     parser.add_argument('--fphotofile', default=None,
                         help='Photometry configuration YAML (default: bundled '
                         'SGA2025-photinfo.yaml).')
@@ -322,9 +349,6 @@ def _parse_args():
                         help='Process only the first N objects (debugging).')
     parser.add_argument('--sgaid-list', default=None,
                         help='Comma-separated SGAID values to restrict to (debugging).')
-    parser.add_argument('--no-models', action='store_true',
-                        help='Skip writing the WAVE/MODELS extensions (written by '
-                        'default).')
     parser.add_argument('--overwrite', action='store_true',
                         help='Overwrite an existing output file.')
     parser.add_argument('--verbose', action='store_true',
@@ -422,10 +446,10 @@ def main():
     # Populate sc_data.photometry/bg_data in the main process (also serves
     # the --mp 1 serial-fitting path, since MPPool never spawns subprocess
     # workers -- and so never runs the initializer -- when nworkers<=1).
-    # The raw templates file is required regardless of --no-models: the
-    # sub-grid-refined model spectrum is computed as part of every fit
-    # (fastbayes_one always returns a modelspectrum), --no-models only
-    # skips writing it to the output file.
+    # The raw templates file is always required: fastbayes_one computes the
+    # sub-grid-refined model spectrum as part of every fit (to derive
+    # LOGMSTAR/SFR/DN4000_MODEL/etc.), even though it's no longer returned
+    # or persisted to the output file.
     init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile,
                     'templatedir': args.templatedir, 'templatesfile': templatesfile}
     _initialize_fastbayes_workers(**init_argdict)
@@ -446,10 +470,9 @@ def main():
     out = run_fits_with_progress(mp_pool, fitargs, label=f'[{label}] ')
     mp_pool.close()
 
-    metas, results, modelspectra = zip(*out)
+    metas, results = zip(*out)
 
-    write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype,
-                modelspectra, write_models=not args.no_models)
+    write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype)
 
 
 if __name__ == '__main__':

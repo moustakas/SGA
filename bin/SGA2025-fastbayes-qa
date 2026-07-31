@@ -53,12 +53,14 @@ def _parse_args():
     parser.add_argument('--templatedir', default=None,
                         help='Top-level location of the raw Bayesian templates file '
                         '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile is '
-                        'given (or defaulted, see below). Only needed when --ndraw > 0.')
+                        'given (or defaulted, see below). Always required: fastbayes_qa has '
+                        'no stored model spectrum to read back (see bin/SGA2025-fastbayes), '
+                        'so it always rebuilds the refined spectrum from the raw templates.')
     parser.add_argument('--templatesfile', default=None,
                         help='Full path to the raw Bayesian templates FITS file (output of '
                         'fastspecfit bin/build-bayesian-templates), overriding --templatedir/'
-                        '$FTEMPLATES_DIR reconstruction. Only needed when --ndraw > 0. Default '
-                        '(when --templatedir is also not given): '
+                        '$FTEMPLATES_DIR reconstruction. Always required (see --templatedir). '
+                        'Default (when --templatedir is also not given): '
                         '$SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits')
     parser.add_argument('--qadir', default=None,
                         help='Output directory for QA figures (default: $SGA_DIR/fastbayes/qa)')
@@ -99,19 +101,17 @@ def main():
     if templatesfile is None and args.templatedir is None:
         templatesfile = os.path.join(sga_dir(), 'fastbayes', 'bayesian-templates-chabrier-001.fits')
 
-    # --ndraw > 0 (the default) makes fastbayes_qa_one read individual raw
-    # template rows, requiring the (multi-GB) raw templates file to be
-    # present -- fail here, with a clear diagnosis, rather than deep inside
-    # _initialize_fastbayes_workers, which currently crashes with a bare
-    # TypeError (stat: path should be ... not NoneType) when it isn't
-    # resolvable at all (no --templatesfile/--templatedir and no
-    # $FTEMPLATES_DIR), and would otherwise just as opaquely report a
-    # missing file when one is resolvable but wrong.
-    if args.ndraw > 0 and args.templatedir is None and not os.path.isfile(templatesfile):
-        errmsg = (f'--ndraw {args.ndraw} > 0 (the default) needs the raw Bayesian templates file, but '
-                  f'{templatesfile} does not exist. Pass --templatesfile or --templatedir explicitly, '
-                  'or use --ndraw 0 to regenerate QA without the extra posterior-draw curves (and '
-                  'without needing the raw templates file at all).')
+    # fastbayes_qa always rebuilds the refined rest-frame spectrum from the
+    # raw templates file (no longer persisted in the fastbayes output -- see
+    # bin/SGA2025-fastbayes), regardless of --ndraw -- fail here, with a
+    # clear diagnosis, rather than deep inside _initialize_fastbayes_workers,
+    # which currently crashes with a bare TypeError (stat: path should be
+    # ... not NoneType) when it isn't resolvable at all (no --templatesfile/
+    # --templatedir and no $FTEMPLATES_DIR), and would otherwise just as
+    # opaquely report a missing file when one is resolvable but wrong.
+    if args.templatedir is None and not os.path.isfile(templatesfile):
+        errmsg = (f'The raw Bayesian templates file is required, but {templatesfile} does not '
+                  'exist. Pass --templatesfile or --templatedir explicitly.')
         log.critical(errmsg)
         raise IOError(errmsg)
 
