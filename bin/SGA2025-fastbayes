@@ -48,7 +48,7 @@ defaults below. To rebuild both from scratch after a grid-design change::
       --outfile=$SGA_DIR/fastbayes/bayesian-photometry-chabrier-001.fits \\
       --templatesfile=$SGA_DIR/fastbayes/bayesian-templates-chabrier-001.fits \\
       --fphotofile=$SGA_CODE_DIR/py/SGA/data/SGA2025-photinfo.yaml \\
-      --adaptive --nz=100 --zmax=0.6
+      --adaptive --nz=200 --zmin=1e-5 --zmax=0.6
 
 (both are fastspecfit bin/ scripts, not SGA scripts.) Rerun this script
 with --overwrite afterwards to refit against the new grid.
