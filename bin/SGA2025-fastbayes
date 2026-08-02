@@ -69,7 +69,7 @@ Writes, to --outdir (default $SGA_DIR/fastbayes):
   SGA2025-fastbayes-{version}.fits (--aperture omitted), or
   SGA2025-fastbayes-{aperture}-{version}.fits (--aperture given) --
   METADATA (SGAID/GALAXY/APERTURE/SMA_AP/RA/DEC/Z/PHOTSYS/FLUX_*/
-  FLUX_IVAR_*/FLUX_SYNTH_PHOTMODEL_*) and FASTBAYES (also carries SGAID,
+  FLUX_IVAR_*/FLUX_SYNTH_*) and FASTBAYES (also carries SGAID,
   redundantly, so it's usable without cross-referencing METADATA)
   extensions. No WAVE/MODELS extensions: fastspecfit.fastbayes no longer
   returns/persists the refined rest-frame model spectrum per object --
@@ -77,7 +77,7 @@ Writes, to --outdir (default $SGA_DIR/fastbayes):
   instead (cheap and deterministic). Z is Z_COSMO, renamed on output to
   match the column name bin/fastbayes-qa (and
   fastspecfit.fastbayes.fastbayes_qa_one) expects to read back.
-  FLUX_SYNTH_PHOTMODEL_* is the grid's best-fit observed-frame model
+  FLUX_SYNTH_* is the grid's best-fit observed-frame model
   photometry (nanomaggies), a free byproduct of the fit added to meta by
   fastbayes_one -- distinct from the input FLUX_*/FLUX_IVAR_*.
 """
@@ -164,7 +164,7 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
     metalist : list of dict
         Per-fit photometry (``FLUX_{BAND}``/``FLUX_IVAR_{BAND}``/
         ``MW_TRANSMISSION_{BAND}``), mutated in place by ``fastbayes_one``
-        (which also adds ``FLUX_SYNTH_PHOTMODEL_{BAND}``, the grid's
+        (which also adds ``FLUX_SYNTH_{BAND}``, the grid's
         best-fit observed-frame model photometry).
     trackrows : list of dict
         ``SGAID``/``GALAXY``/``APERTURE``/``SMA_AP``/``RA``/``DEC``/``Z``/
@@ -192,6 +192,12 @@ def build_fit_rows(sga, ellipsephot, phot, aperture):
         for band in bands:
             B = band.upper()
             meta[f'MW_TRANSMISSION_{B}'] = float(row[f'MW_TRANSMISSION_{B}'])
+            # Pre-declare, mirroring fastspecfit's own fastbayes() driver:
+            # fastbayes_one only sets this once it reaches the synthetic-
+            # photometry step, so an object whose redshift exceeds the
+            # grid's max (an early-return skip, not an exception) would
+            # otherwise leave this key missing entirely.
+            meta[f'FLUX_SYNTH_{B}'] = 0.
 
             if aperture is None:
                 flux = float(row[f'FLUX_{B}'])
@@ -285,12 +291,20 @@ def run_fits_with_progress(mp_pool, fitargs, label=''):
 def write_output(outfile, trackrows, phot, metas, results, fastbayes_dtype):
     """Assemble and write the METADATA/FASTBAYES output file."""
     metatbl = Table(trackrows)
+    # Grouped by column type (all FLUX_*, then all FLUX_IVAR_*, then all
+    # FLUX_SYNTH_*), matching fastspecfit's own
+    # create_output_meta/_assemble_fastbayes_results data model, rather than
+    # interleaving the three per band.
     for band in phot.bands:
         B = band.upper()
         metatbl[f'FLUX_{B}'] = np.array([m[f'FLUX_{B}'] for m in metas], dtype='f4')
+    for band in phot.bands:
+        B = band.upper()
         metatbl[f'FLUX_IVAR_{B}'] = np.array([m[f'FLUX_IVAR_{B}'] for m in metas], dtype='f4')
-        metatbl[f'FLUX_SYNTH_PHOTMODEL_{B}'] = np.array(
-            [m[f'FLUX_SYNTH_PHOTMODEL_{B}'] for m in metas], dtype='f4')
+    for band in phot.bands:
+        B = band.upper()
+        metatbl[f'FLUX_SYNTH_{B}'] = np.array(
+            [m[f'FLUX_SYNTH_{B}'] for m in metas], dtype='f4')
 
     # np.array(a_tuple_of_structured_scalars, dtype=struct_dtype) misparses
     # the outer tuple as a single record's field values rather than a
