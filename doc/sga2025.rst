@@ -10,15 +10,17 @@ This page describes the organization of the public data release (v1.0),
 the naming conventions used throughout, and the data model of the primary
 science-ready merged catalogs.
 
+.. warning::
+
+   **SGA-2025 is not yet publicly released.** This page, the linked
+   catalogs, and the web galleries are in draft form, subject to change
+   without notice, and should not be cited, redistributed, or relied upon
+   as final data products.
+
 .. _data-access:
 
 Data Access
 -----------
-
-.. note::
-
-   The SGA-2025 data release and web visualizations are currently in
-   draft form and still a work in progress.
 
 **Merged catalogs** *(right-click → Save link as to download)*
 (see :ref:`merged-catalogs` for the data model and :ref:`imaging-regions` for region descriptions):

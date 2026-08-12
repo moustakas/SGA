@@ -21,6 +21,8 @@ Instrument (DESI) <https://desi.lbl.gov>`_.
       :link-type: doc
       :class-card: sd-border-2
 
+      **⚠️ Not yet publicly released** — draft, subject to change
+
       **Current release (v1.0)** — 470,625 galaxies over 30,000 deg²
 
       *griz* optical (DR11) · unWISE W1–W4 · GALEX FUV/NUV
