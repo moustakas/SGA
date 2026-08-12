@@ -41,16 +41,16 @@ fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
                'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
                'FLUX_IVAR_FUV', 'FLUX_IVAR_NUV']
 
-absmag_bands: ['U', 'B', 'V', 'twomass_J', 'W1',
-               'galex_fuv', 'galex_nuv',
-               'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z']
+absmag_bands: ['FUV', 'NUV', 'U', 'B', 'V',
+               'J', 'KS', 'W1', 'W2',
+               'SDSS_U', 'SDSS_G', 'SDSS_R', 'SDSS_I', 'SDSS_Z']
 
 band_shift: [0.0, 0.0, 0.0, 0.0, 0.0,
-             0.0, 0.0,
+             0.0, 0.0, 0.0, 0.0,
              0.1, 0.1, 0.1, 0.1, 0.1]
 
-absmag_filters: ['bessell-U', 'bessell-B', 'bessell-V', 'twomass-J', 'wise2010-W1',
-                 'galex-fuv', 'galex-nuv',
+absmag_filters: ['galex-fuv', 'galex-nuv', 'bessell-U', 'bessell-B', 'bessell-V',
+                 'twomass-J', 'twomass-Ks', 'wise2010-W1', 'wise2010-W2',
                  'sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z']
 
 viewer_layer: ls-dr11

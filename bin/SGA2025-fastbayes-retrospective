@@ -1,0 +1,361 @@
+#!/usr/bin/env python
+"""SGA2025-fastbayes-retrospective: diagnose Bayesian grid coverage from an
+existing bin/SGA2025-fastbayes output file.
+
+Answers "which parts of the model grid does the data actually touch" --
+not a photometry/chi2 quality check (chi2 is used only to split the sample,
+see --chi2-cut) -- so that the grid's axis ranges/binning
+(py/SGA/data/SGA2025-bayesian-grid.yaml) can be redesigned around where the
+data actually land, rather than an a priori guess.
+
+Grid-node positions are reconstructed directly from the grid-design YAML
+(py/SGA/data/SGA2025-bayesian-grid.yaml, or an override passed via
+--paramsfile) using the exact same per-axis `kind` builders (fixed/
+linspace/logspace/exp_quantile/zero_plus_logspace) as fastspecfit's own
+bin/build-bayesian-templates, so this never has to open the (many-GB)
+raw templates FITS file just to read its small AXES/METADATA extensions.
+
+Only fixed-axis and free-axis distinction matters here: LOGUMIN/GAMMA are
+pinned to a single grid value in the current design (see
+SGA2025-bayesian-grid.yaml) and are skipped, since a single-node axis has
+no coverage question to ask.
+
+Per free axis (LOGAGE, T33FRAC, T67FRAC, LOGZZSUN, TAUV, LOGQPAH), one
+three-panel figure is written, each panel drawn for the full sample and
+for a reduced-chi2-cut subsample (--chi2-cut) side by side, since the
+sample's very poor typical photometric chi2 could otherwise fake grid-
+coverage patterns that have nothing to do with the grid itself:
+
+  1. Occupancy -- histogram of the discrete-posterior MODE (the one point
+     estimate guaranteed to land exactly on a grid node, unlike the
+     sub-grid-refined bare value or MEAN/percentiles), with the actual
+     grid-node positions marked and the fraction piled within half a grid
+     cell of either edge annotated (the classic sign a range is too
+     narrow).
+  2. Resolution -- boxplot of the refined value's formal uncertainty
+     (_ERR) grouped by which grid interval each object's MODE falls in,
+     against that interval's width -- flags axes where ERR << spacing
+     (under-resolved: losing information) or ERR >> spacing (over-
+     resolved: points wasted).
+  3. Multimodality -- 2D histogram of MODE vs. P50; a P50 that lands away
+     from its own object's MODE means the discrete posterior has more
+     than one lump, i.e. the grid is too coarse to separate genuinely
+     distinct solutions.
+
+Two additional joint-occupancy figures (2D histogram of the MODE columns,
+full vs. chi2-cut side by side) target axis pairs with a known physical
+coupling, to check whether whole regions of that plane are simply never
+selected: T33FRAC vs. T67FRAC (jointly define the dense-basis SFH shape)
+and LOGAGE vs. TAUV.
+
+Finally, a one-row-per-axis summary table is written (and logged), giving
+n_nodes, the low/high edge-pileup fraction (full and cut sample), the
+median(ERR)/median(local spacing) ratio, and the multimodal fraction
+(|MODE-P50| exceeding one local grid cell) -- the condensed "what to
+change" readout.
+
+Usage
+-----
+::
+
+  SGA2025-fastbayes-retrospective /path/to/SGA2025-fastbayes-v1.0.fits
+
+Writes, to --outdir (default: a "retrospective" subdirectory alongside
+--fastbayesfile; pass --outdir explicitly to write somewhere unrelated):
+  retrospective-{AXIS}.png       -- one per free axis (3-panel each)
+  retrospective-joint-t33-t67.png
+  retrospective-joint-age-tauv.png
+  retrospective-summary.fits
+"""
+import os
+import argparse
+from importlib import resources
+
+import yaml
+import numpy as np
+import fitsio
+from astropy.table import Table
+
+from SGA.logger import log
+from SGA.qa import plot_style
+
+
+def _axis_fixed(cfg):
+    return np.asarray(cfg['values'], dtype='f8')
+
+
+def _axis_linspace(cfg):
+    npts = cfg['npts']
+    return cfg['min'] + (cfg['max'] - cfg['min']) * np.arange(npts) / np.float64(max(npts - 1, 1))
+
+
+def _axis_logspace(cfg):
+    npts = cfg['npts']
+    lo, hi = np.log10(cfg['min']), np.log10(cfg['max'])
+    return 10.**(lo + (hi - lo) * np.arange(npts) / np.float64(max(npts - 1, 1)))
+
+
+def _exponential_quantile_grid(npts, theta):
+    p = (np.arange(1, npts + 1) - 0.5) / npts
+    return -theta * np.log(1. - p)
+
+
+def _axis_exp_quantile(cfg):
+    return np.concatenate(([0.], _exponential_quantile_grid(cfg['npts'] - 1, cfg['theta'])))
+
+
+def _axis_zero_plus_logspace(cfg):
+    return np.concatenate(([0.], np.logspace(np.log10(cfg['min']), np.log10(cfg['max']), cfg['npts'] - 1)))
+
+
+# Mirrors fastspecfit bin/build-bayesian-templates's _AXIS_BUILDERS exactly
+# (see that script for the authoritative version) -- duplicated here rather
+# than imported since build-bayesian-templates is a bin/ script, not an
+# importable module.
+_AXIS_BUILDERS = {
+    'fixed': _axis_fixed,
+    'linspace': _axis_linspace,
+    'logspace': _axis_logspace,
+    'exp_quantile': _axis_exp_quantile,
+    'zero_plus_logspace': _axis_zero_plus_logspace,
+}
+
+
+# Objects whose fit was skipped outright (redshift beyond the grid; see
+# fastbayes_one) have NDOF<=0 and an all-zero result row -- not a real fit,
+# so they'd fake a bogus pileup at 0 on every axis if not dropped up front.
+def _valid_mask(fb):
+    return fb['NDOF'] > 0
+
+
+def load_grid_axes(paramsfile):
+    """Reconstruct grid-node positions (in the same space
+    bin/SGA2025-fastbayes output columns use, i.e. log10 for `log: true`
+    axes) for every *free* axis (more than one grid point) from a
+    bin/build-bayesian-templates grid-design YAML.
+
+    Parameters
+    ----------
+    paramsfile : str
+        Full path to a grid-design YAML (same schema as
+        py/SGA/data/SGA2025-bayesian-grid.yaml / fastspecfit's own
+        data/bayesian-grid.yaml).
+
+    Returns
+    -------
+    dict
+        Mapping ``outname`` (e.g. ``'LOGAGE'``) -> ``{'nodes': sorted
+        1-D array, 'label': str}``. Fixed (single-node) axes are omitted.
+
+    """
+    with open(paramsfile) as fh:
+        design = yaml.safe_load(fh)
+
+    grid = {}
+    for axis in design['axes']:
+        raw_nodes = np.unique(_AXIS_BUILDERS[axis['kind']](axis))
+        if len(raw_nodes) < 2:
+            continue  # fixed axis (e.g. LOGUMIN/GAMMA) -- no coverage question to ask
+        nodes = np.log10(raw_nodes) if axis.get('log', False) else raw_nodes
+        grid[axis['outname']] = {'nodes': np.sort(nodes), 'label': axis['label']}
+    return grid
+
+
+def edge_pileup(mode_values, nodes, cellfrac=0.5):
+    """Fraction of `mode_values` within `cellfrac` of the edge grid cell's
+    width of the minimum/maximum node.
+
+    Returns
+    -------
+    lo, hi : float
+        Pileup fraction at the low and high edge, respectively.
+
+    """
+    lo_width = (nodes[1] - nodes[0]) * cellfrac
+    hi_width = (nodes[-1] - nodes[-2]) * cellfrac
+    lo = float(np.mean(mode_values <= nodes[0] + lo_width))
+    hi = float(np.mean(mode_values >= nodes[-1] - hi_width))
+    return lo, hi
+
+
+def local_spacing(nodes, values):
+    """Width of the grid interval each of `values` falls into (edge values
+    clipped to the nearest real interval)."""
+    idx = np.clip(np.searchsorted(nodes, values), 1, len(nodes) - 1)
+    return nodes[idx] - nodes[idx - 1]
+
+
+def axis_figure(outname, info, fb, full, cut, chi2_cut, colors, outdir):
+    """Write the 3-panel occupancy/resolution/multimodality figure for one
+    grid axis."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+
+    nodes = info['nodes']
+    mode = np.asarray(fb[f'{outname}_MODE'], dtype='f8')
+    err = np.asarray(fb[f'{outname}_ERR'], dtype='f8')
+    p50 = np.asarray(fb[f'{outname}_P50'], dtype='f8')
+
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4.2))
+
+    # --- 1. occupancy ---------------------------------------------------
+    bins = np.concatenate([[nodes[0] - (nodes[1] - nodes[0]) / 2],
+                           (nodes[:-1] + nodes[1:]) / 2,
+                           [nodes[-1] + (nodes[-1] - nodes[-2]) / 2]])
+    ax[0].hist(mode[full], bins=bins, color=colors[0], alpha=0.6, density=True,
+               label=f'full (N={np.count_nonzero(full):,d})')
+    ax[0].hist(mode[cut], bins=bins, color=colors[1], alpha=0.6, density=True,
+               label=f'chi2<{chi2_cut:g} (N={np.count_nonzero(cut):,d})')
+    for node in nodes:
+        ax[0].axvline(node, color='k', lw=0.5, alpha=0.3)
+    lo_f, hi_f = edge_pileup(mode[full], nodes)
+    lo_c, hi_c = edge_pileup(mode[cut], nodes)
+    ax[0].set_title(f'edge pileup: full {lo_f:.0%}/{hi_f:.0%}, cut {lo_c:.0%}/{hi_c:.0%}',
+                    fontsize=11)
+    ax[0].set_xlabel(info['label'])
+    ax[0].set_ylabel('Occupancy (MODE, normalized)')
+    ax[0].legend(fontsize=9, loc='upper center')
+
+    # --- 2. resolution ---------------------------------------------------
+    interval = np.clip(np.searchsorted(nodes, mode[cut]), 1, len(nodes) - 1)
+    spacing = nodes[interval] - nodes[interval - 1]
+    box_data = [err[cut][interval == i] for i in range(1, len(nodes))]
+    positions = np.arange(1, len(nodes))
+    ax[1].boxplot([b[np.isfinite(b) & (b > 0)] for b in box_data], positions=positions,
+                 showfliers=False, widths=0.6)
+    ax[1].plot(positions, (nodes[1:] - nodes[:-1]), 'o-', color=colors[2], ms=5,
+              label='grid spacing')
+    ax[1].set_yscale('log')
+    ax[1].set_xlabel(f'{outname} grid interval')
+    ax[1].set_ylabel('formal ERR (box) vs. spacing (line)')
+    ax[1].set_title('resolution (chi2-cut sample)', fontsize=11)
+    ax[1].legend(fontsize=9)
+
+    # --- 3. multimodality --------------------------------------------------
+    good = cut & np.isfinite(mode) & np.isfinite(p50)
+    h = ax[2].hist2d(mode[good], p50[good], bins=[bins, 40], cmap='viridis', norm=LogNorm())
+    ax[2].plot(nodes, nodes, 'w--', lw=1)
+    spacing_at_mode = local_spacing(nodes, mode[good])
+    multimodal_frac = float(np.mean(np.abs(mode[good] - p50[good]) > spacing_at_mode))
+    ax[2].set_title(f'multimodal fraction: {multimodal_frac:.1%}', fontsize=11)
+    ax[2].set_xlabel(f'{outname} MODE')
+    ax[2].set_ylabel(f'{outname} P50')
+    fig.colorbar(h[3], ax=ax[2], label='N')
+
+    fig.suptitle(outname)
+    fig.tight_layout()
+    pngfile = os.path.join(outdir, f'retrospective-{outname}.png')
+    fig.savefig(pngfile, dpi=150)
+    plt.close(fig)
+    log.info(f'Wrote {pngfile}')
+
+    err_ratio = float(np.nanmedian(err[cut][err[cut] > 0]) /
+                      np.nanmedian(spacing[np.isfinite(spacing) & (spacing > 0)]))
+
+    return {
+        'AXIS': outname, 'N_NODES': len(nodes),
+        'EDGE_PILEUP_LO_FULL': lo_f, 'EDGE_PILEUP_HI_FULL': hi_f,
+        'EDGE_PILEUP_LO_CUT': lo_c, 'EDGE_PILEUP_HI_CUT': hi_c,
+        'ERR_TO_SPACING_RATIO': err_ratio, 'MULTIMODAL_FRAC': multimodal_frac,
+    }
+
+
+def joint_figure(outname_x, outname_y, grid, fb, full, cut, chi2_cut, outdir, tag):
+    """Write a 2D occupancy (MODE vs. MODE) figure for a physically-coupled
+    axis pair, full sample vs. chi2-cut sample side by side."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+
+    x = np.asarray(fb[f'{outname_x}_MODE'], dtype='f8')
+    y = np.asarray(fb[f'{outname_y}_MODE'], dtype='f8')
+    xnodes, ynodes = grid[outname_x]['nodes'], grid[outname_y]['nodes']
+    xbins = np.concatenate([[xnodes[0] - (xnodes[1] - xnodes[0]) / 2],
+                            (xnodes[:-1] + xnodes[1:]) / 2,
+                            [xnodes[-1] + (xnodes[-1] - xnodes[-2]) / 2]])
+    ybins = np.concatenate([[ynodes[0] - (ynodes[1] - ynodes[0]) / 2],
+                            (ynodes[:-1] + ynodes[1:]) / 2,
+                            [ynodes[-1] + (ynodes[-1] - ynodes[-2]) / 2]])
+
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4.6), sharex=True, sharey=True)
+    for a, mask, title in zip(ax, (full, cut), ('full', f'chi2<{chi2_cut:g}')):
+        h = a.hist2d(x[mask], y[mask], bins=[xbins, ybins], cmap='viridis', norm=LogNorm())
+        a.set_xlabel(grid[outname_x]['label'])
+        a.set_title(f'{title} (N={np.count_nonzero(mask):,d})', fontsize=11)
+        fig.colorbar(h[3], ax=a, label='N')
+    ax[0].set_ylabel(grid[outname_y]['label'])
+    fig.tight_layout()
+    pngfile = os.path.join(outdir, f'retrospective-joint-{tag}.png')
+    fig.savefig(pngfile, dpi=150)
+    plt.close(fig)
+    log.info(f'Wrote {pngfile}')
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('fastbayesfile',
+                        help='Full path to an existing bin/SGA2025-fastbayes output FITS file.')
+    parser.add_argument('--paramsfile', default=None,
+                        help='Grid-design YAML used to produce --fastbayesfile (same schema as '
+                        'fastspecfit bin/build-bayesian-templates --paramsfile). Default: the '
+                        'bundled py/SGA/data/SGA2025-bayesian-grid.yaml.')
+    parser.add_argument('--chi2-cut', type=float, default=3.0,
+                        help='Reduced-chi2 threshold defining the "good" subsample used '
+                        'alongside the full sample in every figure (default: 3.0).')
+    parser.add_argument('--outdir', default=None,
+                        help='Output directory (default: a "retrospective" subdirectory '
+                        'alongside --fastbayesfile).')
+    return parser.parse_args()
+
+
+def main():
+    args = _parse_args()
+
+    outdir = args.outdir or os.path.join(os.path.dirname(os.path.abspath(args.fastbayesfile)),
+                                         'retrospective')
+    os.makedirs(outdir, exist_ok=True)
+
+    paramsfile = args.paramsfile
+    if paramsfile is None:
+        paramsfile = str(resources.files('SGA').joinpath('data/SGA2025-bayesian-grid.yaml'))
+
+    log.info(f'Reconstructing grid-node positions from {paramsfile}...')
+    grid = load_grid_axes(paramsfile)
+    log.info(f'{len(grid):,d} free axes: {", ".join(grid.keys())}')
+
+    log.info(f'Reading {args.fastbayesfile}...')
+    fb = Table(fitsio.read(args.fastbayesfile, ext='FASTBAYES'))
+
+    valid = _valid_mask(fb)
+    rchi2 = np.full(len(fb), np.nan)
+    rchi2[valid] = np.asarray(fb['CHI2'], dtype='f8')[valid] / np.asarray(fb['NDOF'], dtype='f8')[valid]
+    full = valid
+    cut = valid & (rchi2 < args.chi2_cut)
+    log.info(f'{np.count_nonzero(valid):,d}/{len(fb):,d} objects have a valid fit; '
+            f'{np.count_nonzero(cut):,d} pass the chi2<{args.chi2_cut:g} cut.')
+
+    _, colors = plot_style(paper=True, talk=False)
+
+    summary = []
+    for outname, info in grid.items():
+        summary.append(axis_figure(outname, info, fb, full, cut, args.chi2_cut, colors, outdir))
+
+    if 'T33FRAC' in grid and 'T67FRAC' in grid:
+        joint_figure('T33FRAC', 'T67FRAC', grid, fb, full, cut, args.chi2_cut, outdir, 't33-t67')
+    if 'LOGAGE' in grid and 'TAUV' in grid:
+        joint_figure('LOGAGE', 'TAUV', grid, fb, full, cut, args.chi2_cut, outdir, 'age-tauv')
+
+    summarytbl = Table(summary)
+    summaryfile = os.path.join(outdir, 'retrospective-summary.fits')
+    summarytbl.write(summaryfile, overwrite=True)
+    log.info(f'Wrote {summaryfile}')
+    for row in summarytbl:
+        log.info(f'  {row["AXIS"]:>10s}: n_nodes={row["N_NODES"]:d}  '
+                 f'edge_pileup(full)={row["EDGE_PILEUP_LO_FULL"]:.1%}/{row["EDGE_PILEUP_HI_FULL"]:.1%}  '
+                 f'edge_pileup(cut)={row["EDGE_PILEUP_LO_CUT"]:.1%}/{row["EDGE_PILEUP_HI_CUT"]:.1%}  '
+                 f'err/spacing={row["ERR_TO_SPACING_RATIO"]:.2f}  '
+                 f'multimodal={row["MULTIMODAL_FRAC"]:.1%}')
+
+
+if __name__ == '__main__':
+    main()
