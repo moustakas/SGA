@@ -8,6 +8,7 @@
 #   bash etc/update-env-sgaml.sh ssl-legacysurvey         # update ssl-legacysurvey only
 #   bash etc/update-env-sgaml.sh zoobot                   # update Zoobot only
 #   bash etc/update-env-sgaml.sh sga ssl-legacysurvey     # update multiple
+#   bash etc/update-env-sgaml.sh activate                 # redeploy activate.sh only
 #   bash etc/update-env-sgaml.sh --local sga /path/to/SGA # install from local checkout
 
 set -euo pipefail
@@ -87,6 +88,10 @@ update_zoobot() {
     $PIP_INSTALL "zoobot[pytorch]"
 }
 
+update_activate() {
+    bash "$(dirname "$0")/deploy-activate-sgaml.sh" "$SGAML_PREFIX" "$PT_MODULE" "$PYVER"
+}
+
 # Parse arguments
 if [[ ${1:-} == "--local" ]]; then
     [[ $# -lt 3 ]] && { echo "Usage: $0 --local <pkg> /path/to/checkout"; exit 1; }
@@ -101,6 +106,7 @@ if [[ $# -eq 0 ]]; then
     update_tractor
     update_ssl
     update_zoobot
+    update_activate
     exit 0
 fi
 
@@ -112,6 +118,7 @@ for pkg in "$@"; do
         tractor)          update_tractor ;;
         ssl-legacysurvey) update_ssl ;;
         zoobot)           update_zoobot ;;
-        *) echo "Unknown package: $pkg (expected pydl, sga, legacypipe, tractor, ssl-legacysurvey, zoobot)"; exit 1 ;;
+        activate)         update_activate ;;
+        *) echo "Unknown package: $pkg (expected pydl, sga, legacypipe, tractor, ssl-legacysurvey, zoobot, activate)"; exit 1 ;;
     esac
 done
