@@ -23,7 +23,10 @@ If the ring search works well and time allows, mergers and disturbed systems are
 
 ## 2. Data
 
-All data live at NERSC under `$CFS/desicollab/users/ioannis/SGA/2025/ssl` (see `README-ssl.txt` in that directory).
+All data live at NERSC under
+`$CFS/desicollab/users/ioannis/SGA/2025/ssl` (see `README-ssl.txt` in
+that directory) or
+https://data.desi.lbl.gov/desi/users/ioannis/SGA/2025/ssl/README-ssl.txt.
 
 | Product | File | Notes |
 |---|---|---|
