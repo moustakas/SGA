@@ -88,7 +88,7 @@ update_zoobot() {
 }
 
 # Parse arguments
-if [[ $1 == "--local" ]]; then
+if [[ ${1:-} == "--local" ]]; then
     [[ $# -lt 3 ]] && { echo "Usage: $0 --local <pkg> /path/to/checkout"; exit 1; }
     local_install "$2" "$3"
     exit 0
