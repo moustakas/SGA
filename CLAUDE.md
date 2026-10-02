@@ -157,10 +157,10 @@ shifter --image docker:legacysurvey/sga:0.8.1 bash
 
 - `LEGACY_SURVEY_BASEDIR` - Base directory for Legacy Survey data
 - `LEGACY_SURVEY_DIR` - Legacy Survey data directory
-- `SGA_DIR` - SGA working directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025`)
+- `SGA_DIR` - SGA working directory at NERSC (`/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025`)
 - `SGA_DATA_DIR` - SGA data directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data`)
-- `SGA_HTML_DIR` - SGA HTML output directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html`)
-- `SGA_PUBLIC_DIR` - Location of the final public catalogs (`/dvs_ro/cfs/cdirs/cosmo/www/sga/2025`); accessed via `SGA.sga_public_dir()`
+- `SGA_HTML_DIR` - SGA HTML output directory at NERSC (`/global/cfs/cdirs/cosmo/www/sga/2025/html`)
+- `SGA_PUBLIC_DIR` - Location of the final public catalogs (`/global/cfs/cdirs/cosmo/www/sga/2025`); accessed via `SGA.sga_public_dir()`
 
 ## Architecture Patterns
 
